@@ -30,14 +30,21 @@ class Session:
     #: Set when a save failed, so the UI can say so instead of pretending.
     save_error: str = ''
     read_only: bool = False
+    #: `--seed N` pins every fixture instead of drawing one per attempt.
+    #: Exists for two real jobs: reproducing an attempt from its stored seed
+    #: when a key turns out to be wrong, and letting `test-tty.py` know where
+    #: the lead is. Off by default, because a pinned seed defeats crux D10.
+    seed_override: int | None = None
 
     @classmethod
-    def open(cls, clock: Clock | None = None, read_only: bool = False) -> Session:
+    def open(cls, clock: Clock | None = None, read_only: bool = False,
+             seed_override: int | None = None) -> Session:
         return cls(registry=load(), state=State.load(),
-                   clock=clock or RealClock(), read_only=read_only)
+                   clock=clock or RealClock(), read_only=read_only,
+                   seed_override=seed_override)
 
     def record(self, scenario: Scenario, score: Score,
-               marked: tuple[str, ...] = ()) -> Attempt:
+               marked: tuple[str, ...] = (), seed: int | None = None) -> Attempt:
         attempt = Attempt(
             scenario=scenario.id,
             track=scenario.track,
@@ -48,7 +55,7 @@ class Session:
             recall=score.recall,
             precision=score.precision,
             tier=scenario.tier,
-            seed=scenario.seed,
+            seed=scenario.seed if seed is None else seed,
             marked=tuple(marked),
             action_ok=score.action_ok,
         )

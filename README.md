@@ -27,9 +27,9 @@ Python 3, standard library only. No pip, no network, ever.
 
 ## Status
 
-**Phase 0.** The harness is built and proven end to end; `sift` has one
-scenario and the other two tracks say on screen that their engines are not
-written yet. See `CRUX-PLAN.md`, which is the file to read first.
+**Phase 1.** The sift track is complete: eleven scenarios across nmap, web
+content discovery and `sudo -l`. The other two tracks say on screen that their
+engines are not written yet. See `CRUX-PLAN.md`, which is the file to read first.
 
 ## After any change
 

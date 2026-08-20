@@ -14,7 +14,7 @@ an empty one: on a crux D9 scenario it is the correct one.
 from __future__ import annotations
 
 from ..clock import Stopwatch
-from ..model import MarkBody, Scenario
+from ..model import MarkBody, Scenario, roles
 from ..render import Caps, Text, line, wrap_rich
 from ..scoring import score_marks
 from ..session import Session
@@ -24,12 +24,29 @@ from . import ListScreen, STAY, push, replace, selector
 class MarkScreen(ListScreen):
     """A screen of output, and a cursor that marks what mattered."""
 
-    def __init__(self, session: Session, scenario: Scenario) -> None:
+    def __init__(self, session: Session, scenario: Scenario,
+                 seed: int | None = None) -> None:
         super().__init__()
         self.session = session
         self.scenario = scenario
         self.body_data: MarkBody = scenario.body
+        #: A fresh screen per attempt (crux D10). Drawn from the injected clock
+        #: rather than from `random`, so a FakeClock makes tests exact and
+        #: nothing in library code reads the wall clock behind D17's back.
+        if seed is None:
+            seed = session.seed_override
+        self.seed = (seed if seed is not None
+                     else int(session.clock.wall() * 1000) & 0xFFFFFFFF)
+        self.lines = self.body_data.build(self.seed)
+        self.leads, self.decoys = roles(self.lines)
         self.marked: set[str] = set()
+        #: Real tool output is wider than a terminal. A DC's LDAP line runs
+        #: past 120 columns and the domain name, which is the whole tell,
+        #: lives at the end of it. Truncating would make the scenario
+        #: unsolvable at 80 columns, and authoring shorter fake output would
+        #: train people to read something nmap does not print. So the screen
+        #: pans instead, and the content stays honest.
+        self.hscroll = 0
         self.watch = Stopwatch(session.clock)
         self.watch.start()
         #: Set when the watch is handed to the act beat. Without it, `close`
@@ -46,10 +63,27 @@ class MarkScreen(ListScreen):
     @property
     def status(self) -> str:
         n = len(self.marked)
-        return f'{n} marked' if n else 'nothing marked'
+        base = f'{n} marked' if n else 'nothing marked'
+        return f'{base}   +{self.hscroll}' if self.hscroll else base
 
     def count(self) -> int:
-        return len(self.body_data.lines)
+        return len(self.lines)
+
+    def _text_budget(self, caps: Caps) -> int:
+        """Columns left for line text after the frame, cursor and checkbox.
+
+        The trailing 1 is the clip indicator's own column. Without it the row
+        came out one wider than the frame, `box_row` truncated it, and the
+        indicator was replaced by the generic ellipsis it was meant to
+        replace: the screen said "there is more" in the vaguest available way
+        while a `pan` hint sat in the footer.
+        """
+        return max(8, caps.cols - 2 - 3 - 4 - 1)
+
+    def _overflow(self, caps: Caps) -> int:
+        """How far the longest line runs past the visible width."""
+        longest = max((len(l.text) for l in self.lines), default=0)
+        return max(0, longest - self._text_budget(caps))
 
     def header_rows(self, caps: Caps) -> list[Text]:
         p = caps.palette
@@ -61,7 +95,8 @@ class MarkScreen(ListScreen):
     def rows(self, caps: Caps) -> list[Text]:
         p = caps.palette
         out: list[Text] = []
-        for i, ln in enumerate(self.body_data.lines):
+        budget = self._text_budget(caps)
+        for i, ln in enumerate(self.lines):
             sel = i == self.cursor
             t = selector(caps, sel)
             on = ln.id in self.marked
@@ -71,37 +106,76 @@ class MarkScreen(ListScreen):
             # Output is quoted verbatim and never marked up: a fixture that
             # rendered backticks as styling would be lying about what the tool
             # actually printed.
-            t.add(ln.text or ' ', p.fg if (sel or on) else p.muted, bold=sel)
+            shown = ln.text[self.hscroll:]
+            clipped = len(shown) > budget
+            t.add(shown[:budget] or ' ', p.fg if (sel or on) else p.muted,
+                  bold=sel)
+            if clipped:
+                t.pad_to(budget + 7)
+                t.add(caps.g('right'), p.dim)
             out.append(t)
         return out
 
     def activate(self, index: int) -> object:
         """Enter is submit, so activation is the toggle."""
-        ln = self.body_data.lines[index]
+        ln = self.lines[index]
         self.marked.symmetric_difference_update({ln.id})
         return STAY
 
-    def extra_hints(self) -> list[tuple[str, str]]:
-        return [('spc', 'mark'), ('ret', 'submit')]
+    def hints(self, caps: Caps) -> list[tuple[str, str]]:
+        """Written out rather than extending the base list.
+
+        The base advertises Enter as `select`, which is what it does on every
+        other list in the app and is wrong here: on this screen Enter submits
+        the whole answer. Inheriting it produced a footer with `ret` in it
+        twice, saying two different things.
+
+        `pan` appears only when a line is actually clipped, because a hint for
+        a key that does nothing is the rule-4 failure the footer contract
+        exists to prevent.
+        """
+        out = [(caps.g('up') + caps.g('down'), 'move')]
+        if self._overflow(caps):
+            out.append((caps.g('left') + caps.g('right'), 'pan'))
+        out += [('spc', 'mark'), (caps.g('enter'), 'submit'),
+                ('esc', 'back'), ('H', 'home'), ('q', 'quit'), ('?', 'help')]
+        return out
 
     def handle(self, key):
         if key.name == 'RET' and not key.ctrl:
             return self._submit()
         if key.name == 'SPC':
             return self.activate(self.cursor)
+        # Arrows only. `l` is the base class's activate and `H` is home, so
+        # binding the vi pair here would shadow two keys the footer promises.
+        if key.name == 'Right':
+            self.hscroll += 8
+            return STAY
+        if key.name == 'Left':
+            self.hscroll = max(0, self.hscroll - 8)
+            return STAY
         return super().handle(key)
+
+    def body(self, caps: Caps) -> list[Text]:
+        # Clamp here rather than in `handle`, because the pan limit depends on
+        # the terminal width and a resize must not strand the view past it.
+        self.hscroll = max(0, min(self.hscroll, self._overflow(caps)))
+        return super().body(caps)
 
     def _submit(self):
         self.watch.lap()
         if self.body_data.actions:
             self._handed_off = True
             return replace(ActScreen(self.session, self.scenario,
-                                     tuple(sorted(self.marked)), self.watch))
-        score = score_marks(self.body_data.leads, self.body_data.decoys,
-                            self.marked, elapsed=self.watch.elapsed())
-        self.session.record(self.scenario, score, tuple(sorted(self.marked)))
+                                     tuple(sorted(self.marked)), self.watch,
+                                     self.lines, self.seed))
+        score = score_marks(self.leads, self.decoys, self.marked,
+                            elapsed=self.watch.elapsed())
+        self.session.record(self.scenario, score, tuple(sorted(self.marked)),
+                            self.seed)
         from .result import ResultScreen
-        return replace(ResultScreen(self.session, self.scenario, score))
+        return replace(ResultScreen(self.session, self.scenario, score,
+                                    self.lines))
 
     def close(self) -> None:
         if not self._handed_off:
@@ -117,11 +191,14 @@ class ActScreen(ListScreen):
     """
 
     def __init__(self, session: Session, scenario: Scenario,
-                 marked: tuple[str, ...], watch) -> None:
+                 marked: tuple[str, ...], watch, lines, seed: int) -> None:
         super().__init__()
         self.session = session
         self.scenario = scenario
         self.marked = marked
+        self.lines = lines
+        self.seed = seed
+        self.leads, self.decoys = roles(lines)
         #: The marking screen is closed as this one is pushed, so the watch
         #: arrives paused. Restarting is a no-op when it is already running,
         #: which keeps this correct whichever order the stack unwinds in.
@@ -165,12 +242,13 @@ class ActScreen(ListScreen):
     def activate(self, index: int) -> object:
         a = self.body_data.actions[index]
         self.watch.lap()
-        score = score_marks(self.body_data.leads, self.body_data.decoys,
-                            self.marked, action_ok=a.correct, has_action=True,
+        score = score_marks(self.leads, self.decoys, self.marked,
+                            action_ok=a.correct, has_action=True,
                             elapsed=self.watch.elapsed())
-        self.session.record(self.scenario, score, self.marked)
+        self.session.record(self.scenario, score, self.marked, self.seed)
         from .result import ResultScreen
-        return replace(ResultScreen(self.session, self.scenario, score, chose=a))
+        return replace(ResultScreen(self.session, self.scenario, score,
+                                    self.lines, chose=a))
 
     def close(self) -> None:
         self.watch.pause()

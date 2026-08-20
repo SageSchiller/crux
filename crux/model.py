@@ -64,31 +64,47 @@ class Action:
     why: str = ''
 
 
+def roles(lines: tuple[Line, ...]) -> tuple[frozenset[str], frozenset[str]]:
+    """(leads, decoys) for one materialised screen.
+
+    A free function rather than a property because from Phase 1 the lines are
+    built per attempt from a seed (crux D10), so there is no single set of
+    lines a body could answer for.
+    """
+    return (frozenset(l.id for l in lines if l.kind == 'lead'),
+            frozenset(l.id for l in lines if l.kind == 'decoy'))
+
+
 @dataclass(frozen=True, slots=True)
 class MarkBody:
     """A sift scenario: a screen of output, and what in it mattered.
 
+    `fixture` builds the screen from a seed rather than storing it, so the
+    noise, the addresses and the lead's position all move between attempts
+    (crux D10). What does not move is which entries are leads: those are
+    authored, and they keep their ids across every seed.
+
     `actions` may be empty, which makes the scenario a spot-only drill. A
-    scenario with no `lead` lines at all is the crux D9 case and is correct by
-    construction: the right answer is to submit having marked nothing.
+    scenario whose fixture yields no `lead` lines at all is the crux D9 case
+    and is correct by construction: the right answer is to submit having marked
+    nothing.
     """
 
     prompt: str
-    lines: tuple[Line, ...]
+    fixture: object
     actions: tuple[Action, ...] = ()
     debrief: str = ''
 
-    @property
-    def leads(self) -> frozenset[str]:
-        return frozenset(l.id for l in self.lines if l.kind == 'lead')
+    def build(self, seed: int) -> tuple[Line, ...]:
+        return self.fixture.build(seed)
 
-    @property
-    def decoys(self) -> frozenset[str]:
-        return frozenset(l.id for l in self.lines if l.kind == 'decoy')
+    def canonical(self) -> tuple[Line, ...]:
+        """The seed-0 screen. For authoring, `validate.py` and tests only."""
+        return self.fixture.canonical()
 
     @property
     def no_lead(self) -> bool:
-        return not self.leads
+        return not roles(self.canonical())[0]
 
 
 @dataclass(frozen=True, slots=True)

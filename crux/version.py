@@ -1,3 +1,3 @@
 """The only copy of the version number. Everything else imports it."""
 
-VERSION = '0.1.0-phase0'
+VERSION = '0.2.0-phase1'

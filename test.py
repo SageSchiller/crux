@@ -28,7 +28,7 @@ from crux import render as R                                  # noqa: E402
 from crux.clock import FakeClock, Stopwatch, fmt              # noqa: E402
 from crux.config import MIN_COLS, MIN_ROWS, TRACKS            # noqa: E402
 from crux.loader import load                                  # noqa: E402
-from crux.model import ContentError, Line, MarkBody, Scenario # noqa: E402
+from crux.model import ContentError, Line, MarkBody, Scenario, roles  # noqa: E402
 from crux.scoring import DECOY_WEIGHT, band, score_marks      # noqa: E402
 from crux.screens import Screen                               # noqa: E402
 from crux.screens.help import HelpScreen                      # noqa: E402
@@ -230,10 +230,57 @@ def test_loader() -> None:
     eq(reg.errors, [], 'content loads with no errors')
     eq(sorted(reg.tracks), sorted(TRACKS), 'all tracks present')
     ok(len(reg.scenarios) >= 3, 'at least one scenario per track')
-    ok(reg.by_id('sift-smoke-nmap') is not None, 'lookup by id')
+    ok(reg.by_id('sift-nmap-pinned') is not None, 'lookup by id')
     ok(reg.by_id('nope') is None, 'unknown id returns None')
     ok(reg.track('sift').ready, 'sift has a real engine')
     ok(not reg.track('salvage').ready, 'salvage is honestly marked unbuilt')
+    ok(len(reg.track('sift').scenarios) >= 9, 'sift has real breadth')
+    ok(reg.by_id('sift-smoke-nmap') is None,
+       'Phase 0 scaffolding was deleted, not left beside real content')
+
+
+def test_fixtures() -> None:
+    """The crux D10 properties, asserted rather than assumed."""
+    reg = load()
+    sifts = [s for s in reg.track('sift').scenarios
+             if isinstance(s.body, MarkBody)]
+    ok(bool(sifts), 'there are sift scenarios to check')
+
+    moved = 0
+    for sc in sifts:
+        b: MarkBody = sc.body
+        a1, a2 = b.build(4242), b.build(4242)
+        eq([l.text for l in a1], [l.text for l in a2],
+           f'{sc.id}: the same seed builds the same screen')
+        ok([l.text for l in b.build(1)] != [l.text for l in b.build(2)],
+           f'{sc.id}: different seeds build different screens')
+
+        keys = {frozenset(roles(b.build(sd))[0]) for sd in (0, 3, 77, 4242)}
+        eq(len(keys), 1, f'{sc.id}: the key does not move with the seed')
+
+        for sd in (0, 3, 77, 4242):
+            ids = [l.id for l in b.build(sd)]
+            eq(len(ids), len(set(ids)), f'{sc.id}: line ids unique at seed {sd}')
+
+        # The anti-memorisation property: for a fixture with generated noise,
+        # the lead must not sit at the same index every time, or the scenario
+        # is beatable by remembering a row number.
+        leads = roles(b.build(0))[0]
+        if leads:
+            positions = set()
+            for sd in range(24):
+                lines = b.build(sd)
+                positions.add(tuple(i for i, l in enumerate(lines)
+                                    if l.id in leads))
+            if len(positions) > 1:
+                moved += 1
+    ok(moved >= 6,
+       f'only {moved} fixtures move their lead between seeds; crux D10 wants '
+       'a screen that cannot be beaten by remembering a row number')
+
+    no_lead = [sc for sc in sifts if sc.body.no_lead]
+    ok(len(no_lead) >= 2,
+       f'{len(no_lead)} no-lead scenarios; crux D9 needs the possibility live')
 
 
 def _screens(session):
@@ -244,18 +291,23 @@ def _screens(session):
     from crux.screens.track import TrackScreen
     from crux.screens.home import ErrorScreen
 
-    sift = session.registry.by_id('sift-smoke-nmap')
+    sift = session.registry.by_id('sift-nmap-pinned')
+    wide = session.registry.by_id('sift-nmap-dc')
     stub = session.registry.by_id('salvage-smoke')
+    mark = MarkScreen(session, sift, seed=0)
+    lead = sorted(mark.leads)[0]
     watch = Stopwatch(session.clock)
-    score = score_marks(sift.body.leads, sift.body.decoys, {'p3000'},
+    score = score_marks(mark.leads, mark.decoys, {lead},
                         action_ok=True, has_action=True, elapsed=61.0)
     return [
         HomeScreen(session),
         TrackScreen(session, 'sift'),
         TrackScreen(session, 'conduit'),
-        MarkScreen(session, sift),
-        ActScreen(session, sift, ('p3000',), watch),
-        ResultScreen(session, sift, score, chose=sift.body.actions[0]),
+        mark,
+        MarkScreen(session, wide, seed=0),
+        ActScreen(session, sift, (lead,), watch, mark.lines, 0),
+        ResultScreen(session, sift, score, mark.lines,
+                     chose=sift.body.actions[0]),
         StubScreen(session, stub),
         HelpScreen(),
         ErrorScreen(session),
@@ -263,7 +315,7 @@ def _screens(session):
 
 
 def test_screens_render() -> None:
-    session = Session.open(clock=FakeClock(), read_only=True)
+    session = Session.open(clock=FakeClock(), read_only=True, seed_override=0)
     for size in ((MIN_COLS, MIN_ROWS), (40, 16), (200, 60)):
         for caps in all_caps(*size):
             for scr in _screens(session):
@@ -282,7 +334,7 @@ def test_screens_render() -> None:
 
 
 def test_screen_contract() -> None:
-    session = Session.open(clock=FakeClock(), read_only=True)
+    session = Session.open(clock=FakeClock(), read_only=True, seed_override=0)
     caps = all_caps()[0]
     for scr in _screens(session):
         name = type(scr).__name__
@@ -301,7 +353,7 @@ def test_screen_contract() -> None:
 def test_walkthrough() -> None:
     """Drive the real stack with real keys, picker to recorded result."""
     clock = FakeClock()
-    session = Session.open(clock=clock, read_only=True)
+    session = Session.open(clock=clock, read_only=True, seed_override=0)
     stack: list[Screen] = [HomeScreen(session)]
     caps = all_caps()[0]
 
@@ -326,13 +378,13 @@ def test_walkthrough() -> None:
     eq(type(stack[-1]).__name__, 'MarkScreen', 'opened the scenario')
 
     mark = stack[-1]
-    lines = mark.body_data.lines
-    lead_index = next(i for i, l in enumerate(lines) if l.kind == 'lead')
+    lead_index = next(i for i, l in enumerate(mark.lines) if l.kind == 'lead')
+    lead_id = mark.lines[lead_index].id
     clock.advance(45)
     for _ in range(lead_index):
         press('Down')
     press('SPC')
-    eq(mark.marked, {'p3000'}, 'space marks the line under the cursor')
+    eq(mark.marked, {lead_id}, 'space marks the line under the cursor')
     press('SPC')
     eq(mark.marked, set(), 'space toggles back off')
     press('SPC')
@@ -349,11 +401,12 @@ def test_walkthrough() -> None:
     eq(type(stack[-1]).__name__, 'ResultScreen', 'choosing reaches the result')
     eq(len(session.state.attempts), 1, 'exactly one attempt was recorded')
     a = session.state.attempts[0]
-    eq(a.scenario, 'sift-smoke-nmap', 'the right scenario was recorded')
+    eq(a.scenario, 'sift-nmap-pinned', 'the right scenario was recorded')
     eq(a.total, 100.0, 'a perfect run scores 100 end to end')
     eq(a.elapsed, 60.0, 'time on task spans both beats (crux D12)')
     ok(a.elapsed > 45.0, 'the act beat is not billed as free time')
-    eq(a.marked, ('p3000',), 'the marks were stored, not just the score')
+    eq(a.marked, (lead_id,), 'the marks were stored, not just the score')
+    eq(a.seed, 0, 'the seed that built the screen was recorded (crux D10)')
     eq(a.tier, 'graded', 'the tier was recorded')
     ok(bool(stack[-1].render(caps)), 'the result screen renders')
 
@@ -377,22 +430,63 @@ def test_stub_records_nothing() -> None:
 
 
 def test_session_persists() -> None:
-    session = Session.open(clock=FakeClock())
-    sift = session.registry.by_id('sift-smoke-nmap')
-    score = score_marks(sift.body.leads, sift.body.decoys, {'p3000'},
-                        elapsed=12.0)
-    session.record(sift, score, ('p3000',))
+    session = Session.open(clock=FakeClock(), seed_override=0)
+    sift = session.registry.by_id('sift-nmap-pinned')
+    lines = sift.body.build(0)
+    leads, decoys = roles(lines)
+    score = score_marks(leads, decoys, leads, elapsed=12.0)
+    session.record(sift, score, tuple(sorted(leads)), 0)
     eq(session.save_error, '', 'a normal save reports no error')
     reloaded = State.load()
-    ok(any(a.scenario == 'sift-smoke-nmap' for a in reloaded.attempts),
+    ok(any(a.scenario == 'sift-nmap-pinned' for a in reloaded.attempts),
        'a recorded attempt survives a reload')
+
+
+def test_panning() -> None:
+    """Real tool output is wider than a terminal; the tell can be at the end."""
+    from crux.screens.mark import MarkScreen
+    session = Session.open(clock=FakeClock(), read_only=True, seed_override=0)
+    sc = session.registry.by_id('sift-nmap-dc')
+    scr = MarkScreen(session, sc, seed=0)
+    # Tall enough that every line is on screen at once. At 24 rows the list
+    # windows on the cursor and the longest line sits below the fold, so a
+    # panning assertion would be measuring the vertical window instead.
+    caps = R.Caps(R.ColorLevel.NONE, R.GlyphLevel.ASCII,
+                  next(iter(PALETTES.values())), MIN_COLS, 40)
+
+    widest = max(len(l.text) for l in scr.lines)
+    ok(widest > scr._text_budget(caps),
+       'this fixture really does overflow 80 columns')
+    ok(any(h[1] == 'pan' for h in scr.hints(caps)),
+       'the footer offers panning when a line is clipped')
+
+    visible = lambda: ''.join(r.plain() for r in scr.render(caps))
+    tail = max(scr.lines, key=lambda l: len(l.text)).text[-12:]
+    ok(tail not in visible(), 'the tail of the longest line starts hidden')
+    for _ in range(40):
+        scr.handle(K.parse('Right'))
+        scr.render(caps)
+    ok(tail in visible(), 'panning reaches the end of the longest line')
+    eq(scr.hscroll, widest - scr._text_budget(caps),
+       'panning clamps at the overflow rather than scrolling into space')
+    for _ in range(40):
+        scr.handle(K.parse('Left'))
+    scr.render(caps)
+    eq(scr.hscroll, 0, 'panning back stops at zero')
+
+    narrow = R.Caps(R.ColorLevel.NONE, R.GlyphLevel.ASCII,
+                    next(iter(PALETTES.values())), 200, 40)
+    scr.hscroll = 999
+    scr.render(narrow)
+    ok(scr.hscroll <= max(0, widest - scr._text_budget(narrow)),
+       'a resize to a wider terminal re-clamps the pan')
 
 
 def main() -> int:
     for fn in (test_keys, test_render_primitives, test_scoring, test_clock,
-               test_state, test_model_guards, test_loader, test_screens_render,
-               test_screen_contract, test_walkthrough, test_stub_records_nothing,
-               test_session_persists):
+               test_state, test_model_guards, test_loader, test_fixtures,
+               test_screens_render, test_screen_contract, test_walkthrough,
+               test_stub_records_nothing, test_session_persists, test_panning):
         fn()
     if FAILURES:
         for f in FAILURES:

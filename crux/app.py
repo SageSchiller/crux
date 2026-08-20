@@ -45,6 +45,10 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
                     help='write attempt history to PATH and exit')
     ap.add_argument('--import', dest='import_', metavar='PATH',
                     help='merge attempt history from PATH and exit')
+    ap.add_argument('--seed', type=int, default=None,
+                    help='pin every fixture to this seed instead of drawing '
+                         'a fresh one per attempt; use it to reproduce an '
+                         'attempt from the seed stored in your history')
     ap.add_argument('--no-alt-screen', action='store_true',
                     help='do not use the alternate screen buffer')
     return ap.parse_args(argv)
@@ -125,7 +129,7 @@ def run(argv: list[str] | None = None) -> int:
         return 2
 
     S.set_help_factory(HelpScreen)
-    session = Session.open(clock=RealClock())
+    session = Session.open(clock=RealClock(), seed_override=args.seed)
     stack: list[S.Screen] = [HomeScreen(session)]
 
     with T.managed(use_alt_screen=not args.no_alt_screen) as tty:

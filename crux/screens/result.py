@@ -20,10 +20,14 @@ from . import ROOT, Screen, POP
 
 class ResultScreen(Screen):
     def __init__(self, session: Session, scenario: Scenario, score: Score,
-                 chose=None) -> None:
+                 lines, chose=None) -> None:
         self.session = session
         self.scenario = scenario
         self.score = score
+        #: The screen as it was actually built for this attempt. Held rather
+        #: than rebuilt, because a result that rendered a different seed's
+        #: lines than the ones you marked would be worse than no result.
+        self.lines = lines
         self.chose = chose
         self.body_data: MarkBody = scenario.body
 
@@ -36,7 +40,7 @@ class ResultScreen(Screen):
         return f'{self.score.total:.0f}  {self.score.band}'
 
     def _text_for(self, line_id: str) -> str:
-        for ln in self.body_data.lines:
+        for ln in self.lines:
             if ln.id == line_id:
                 return ln.text or '(blank line)'
         return line_id

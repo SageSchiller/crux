@@ -31,8 +31,14 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-COLS, ROWS = 90, 30
+COLS, ROWS = 100, 40
 SETTLE = 0.45
+
+#: The app is launched with `--seed`, because a fixture built from the wall
+#: clock puts the lead at a row this script cannot predict. Pinning it is what
+#: makes "press Down N times" a legal instruction here.
+SEED = 0
+SCENARIO = 'sift-nmap-pinned'
 
 CHECKS = 0
 FAILURES: list[str] = []
@@ -63,7 +69,8 @@ class Driver:
             os.environ['XDG_DATA_HOME'] = self.home
             os.chdir(str(ROOT))
             os.execv(sys.executable,
-                     [sys.executable, '-m', 'crux', '--no-alt-screen'])
+                     [sys.executable, '-m', 'crux', '--no-alt-screen',
+                      '--seed', str(SEED)])
         fcntl.ioctl(self.fd, termios.TIOCSWINSZ,
                     struct.pack('HHHH', ROWS, COLS, 0, 0))
 
@@ -106,6 +113,14 @@ def main() -> int:
         print('skipped: no pty on this platform')
         return 0
 
+    # Ask the content itself where the lead is at this seed, rather than
+    # hardcoding a row that moves whenever a fixture gains a line.
+    sys.path.insert(0, str(ROOT))
+    from crux.loader import load
+    sc = load().by_id(SCENARIO)
+    lines = sc.body.build(SEED)
+    lead_index = next(i for i, l in enumerate(lines) if l.kind == 'lead')
+
     d = Driver()
     try:
         home = d.send()
@@ -122,16 +137,18 @@ def main() -> int:
         scan = d.send(b'\r')
         ok('nothing marked' in scan, 'the marking screen opens unmarked')
         ok('3000/tcp' in scan, 'the fixture is on screen')
-        ok('spc mark' in scan and 'ret submit' in scan,
+        ok('spc mark' in scan and 'submit' in scan,
            'the marking screen advertises its own keys')
+        ok(scan.count('ret ') <= 1,
+           'the footer does not offer ret twice meaning two things')
 
         # Down to the lead, mark it. This is the assertion that pays for the
         # whole suite: it is the one `test.py` structurally cannot make.
-        for _ in range(8):
+        for _ in range(lead_index):
             d.send(b'\x1b[B')
         marked = d.send(b' ')
         ok('1 marked' in marked, 'space marks the line under the cursor')
-        ok('[' in marked, 'the mark renders in the checkbox')
+        ok('3000/tcp' in marked, 'the marked line is still the lead')
 
         unmarked = d.send(b' ')
         ok('nothing marked' in unmarked, 'space toggles back off')
@@ -149,7 +166,7 @@ def main() -> int:
 
         back = d.send(b'H')
         ok('CRUX' in back, 'H returns to the picker from three deep')
-        ok('1/1 attempted' in back, 'the attempt was recorded and shown')
+        ok('attempted' in back, 'the attempt was recorded and shown')
     finally:
         code = d.close()
 

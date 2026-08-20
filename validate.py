@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from crux import render as R
 from crux.config import EXIT_CHORD, TIERS, TRACKS
 from crux.loader import load
-from crux.model import LINE_KINDS, MarkBody, Scenario, StubBody
+from crux.model import LINE_KINDS, MarkBody, Scenario, StubBody, roles
 from crux.screens import Screen
 from crux.version import VERSION
 
@@ -70,20 +70,16 @@ def check_scenario(s: Scenario) -> None:
         err(f'{s.id}: unknown body type {type(s.body).__name__}')
 
 
+#: Seeds every fixture is built at. Not a round number of consecutive
+#: integers on purpose: a builder that keys off `seed % something` would pass
+#: 0..5 and fail in the wild.
+PROBE_SEEDS = (0, 1, 7, 42, 1000, 65535, 99991, 2 ** 31 - 1)
+
+
 def check_mark_body(s: Scenario) -> None:
     b: MarkBody = s.body
-    if not b.lines:
-        err(f'{s.id}: no lines')
-        return
     if not b.prompt.strip():
         err(f'{s.id}: no prompt')
-    seen = set()
-    for ln in b.lines:
-        if ln.id in seen:
-            err(f'{s.id}: duplicate line id {ln.id!r}')
-        seen.add(ln.id)
-        if ln.kind not in LINE_KINDS:
-            err(f'{s.id}: line {ln.id!r} has bad kind {ln.kind!r}')
     if s.tier != 'graded':
         err(f'{s.id}: a marking scenario is graded, not {s.tier!r}')
 
@@ -95,15 +91,46 @@ def check_mark_body(s: Scenario) -> None:
             if not a.why.strip():
                 warn(f'{s.id}: action {a.text[:30]!r} explains nothing; the '
                      'wrong options are where the reasoning lives')
-    if b.no_lead:
-        # crux D9 is a feature, not a mistake, but it should be deliberate.
-        if not b.decoys:
-            warn(f'{s.id}: a no-lead scenario with no decoys is not a test of '
-                 'restraint, it is a blank screen')
     if not s.source:
         warn(f'{s.id}: no provenance (crux D11)')
     if not s.waypoint:
         warn(f'{s.id}: no Waypoint node (crux D11)')
+
+    # The fixture must build at every seed, and the key must survive all of
+    # them. This is the defect class the seeded builder introduces: a lead
+    # that is present at seed 0 and absent at seed 99991 makes the scenario
+    # silently unsolvable for whoever draws that seed, and nobody would ever
+    # reproduce the report. Checked here rather than hoped for.
+    first_leads: frozenset[str] | None = None
+    for seed in PROBE_SEEDS:
+        try:
+            lines = b.build(seed)
+        except Exception as e:                       # noqa: BLE001
+            err(f'{s.id}: fixture raised at seed {seed}: '
+                f'{e.__class__.__name__}: {e}')
+            return
+        if not lines:
+            err(f'{s.id}: fixture produced no lines at seed {seed}')
+            return
+
+        ids = [ln.id for ln in lines]
+        if len(ids) != len(set(ids)):
+            dupes = sorted({i for i in ids if ids.count(i) > 1})
+            err(f'{s.id}: duplicate line ids at seed {seed}: {dupes}')
+        for ln in lines:
+            if ln.kind not in LINE_KINDS:
+                err(f'{s.id}: line {ln.id!r} has bad kind {ln.kind!r}')
+
+        leads, decoys = roles(lines)
+        if first_leads is None:
+            first_leads = leads
+        elif leads != first_leads:
+            err(f'{s.id}: the key moves with the seed. At seed {seed} the '
+                f'leads are {sorted(leads)}, at seed {PROBE_SEEDS[0]} they '
+                f'were {sorted(first_leads)}')
+        if not leads and not decoys:
+            warn(f'{s.id}: a no-lead scenario with no decoys is not a test of '
+                 'restraint, it is a blank screen')
 
 
 def check_scaffolding(reg) -> None:
@@ -173,20 +200,22 @@ def main() -> int:
     check_screen_contract()
 
     print(f'crux {VERSION}')
-    total_lines = sum(len(s.body.lines) for s in reg.scenarios
-                      if isinstance(s.body, MarkBody))
-    total_leads = sum(len(s.body.leads) for s in reg.scenarios
-                      if isinstance(s.body, MarkBody))
-    total_decoys = sum(len(s.body.decoys) for s in reg.scenarios
-                       if isinstance(s.body, MarkBody))
-    total_actions = sum(len(s.body.actions) for s in reg.scenarios
-                        if isinstance(s.body, MarkBody))
+    marks = [s for s in reg.scenarios if isinstance(s.body, MarkBody)]
+    builds = [s.body.canonical() for s in marks]
+    total_lines = sum(len(b) for b in builds)
+    total_leads = sum(len(roles(b)[0]) for b in builds)
+    total_decoys = sum(len(roles(b)[1]) for b in builds)
+    total_actions = sum(len(s.body.actions) for s in marks)
+    no_lead = sum(1 for b in builds if not roles(b)[0])
     for name in TRACKS:
         tr = reg.track(name)
         state = 'ready' if tr.ready else 'engine not built yet'
         print(f'  {name:<9}{len(tr.scenarios):>3} scenario(s)   {state}')
-    print(f'  fixtures  {total_lines} lines, {total_leads} lead(s), '
-          f'{total_decoys} decoy(s), {total_actions} action(s)')
+    print(f'  fixtures  {len(marks)} built, {total_lines} lines, '
+          f'{total_leads} lead(s), {total_decoys} decoy(s), '
+          f'{total_actions} action(s), {no_lead} with no lead')
+    print(f'  seeds     each fixture built at {len(PROBE_SEEDS)} seeds, '
+          'key stable across all')
 
     for w in WARNINGS:
         print(f'  WARN  {w}')
