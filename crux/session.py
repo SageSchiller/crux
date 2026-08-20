@@ -30,6 +30,10 @@ class Session:
     #: Set when a save failed, so the UI can say so instead of pretending.
     save_error: str = ''
     read_only: bool = False
+    #: Set by `app.run` so screens that hand the terminal back for an editor
+    #: or a subprocess can do so. None outside a TTY, and the handover helper
+    #: degrades to running in place, which is what makes salvage testable.
+    terminal: object | None = None
     #: `--seed N` pins every fixture instead of drawing one per attempt.
     #: Exists for two real jobs: reproducing an attempt from its stored seed
     #: when a key turns out to be wrong, and letting `test-tty.py` know where
@@ -42,6 +46,31 @@ class Session:
         return cls(registry=load(), state=State.load(),
                    clock=clock or RealClock(), read_only=read_only,
                    seed_override=seed_override)
+
+    def record_run(self, scenario: Scenario, score) -> Attempt:
+        """Record a salvage attempt. Separate from `record` because the two
+        tracks measure different things and folding them into one signature
+        with six optional arguments would hide that."""
+        attempt = Attempt(
+            scenario=scenario.id, track=scenario.track,
+            when=self.clock.wall(), elapsed=score.elapsed,
+            total=score.total_score, marks=score.total_score,
+            recall=1.0 if score.landed else 0.0,
+            precision=(score.met / score.total) if score.total else 0.0,
+            tier=scenario.tier, seed=0, marked=(),
+            runs=score.runs, read_first=score.read_first,
+        )
+        self.state.record(attempt)
+        self._save()
+        return attempt
+
+    def _save(self) -> None:
+        if self.read_only:
+            return
+        try:
+            self.state.save()
+        except OSError as e:
+            self.save_error = str(e)
 
     def record(self, scenario: Scenario, score: Score,
                marked: tuple[str, ...] = (), seed: int | None = None) -> Attempt:
@@ -60,9 +89,5 @@ class Session:
             action_ok=score.action_ok,
         )
         self.state.record(attempt)
-        if not self.read_only:
-            try:
-                self.state.save()
-            except OSError as e:
-                self.save_error = str(e)
+        self._save()
         return attempt

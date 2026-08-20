@@ -7,7 +7,7 @@ render identically unless something on the row says otherwise.
 
 from __future__ import annotations
 
-from ..model import StubBody
+from ..model import SalvageBody, StubBody
 from ..render import Caps, Text, line
 from ..session import Session
 from . import ListScreen, push, selector
@@ -69,8 +69,11 @@ class TrackScreen(ListScreen):
 
     def activate(self, index: int) -> object:
         from .mark import MarkScreen
+        from .salvage import SalvageScreen
         from .stub import StubScreen
         s = self.track.scenarios[index]
         if isinstance(s.body, StubBody):
             return push(StubScreen(self.session, s))
+        if isinstance(s.body, SalvageBody):
+            return push(SalvageScreen(self.session, s))
         return push(MarkScreen(self.session, s))

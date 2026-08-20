@@ -108,6 +108,39 @@ class MarkBody:
 
 
 @dataclass(frozen=True, slots=True)
+class SalvageBody:
+    """A salvage scenario: a broken proof-of-concept and a target to aim it at.
+
+    `broken` is the source the student is handed. `solution` is a reference
+    fix that must make the target record a hit, and `validate.py` runs both:
+    the solution has to land and the broken one has to fail. That pair of
+    checks is what proves the exercise is solvable *and* actually broken,
+    which is the defect class that would otherwise ship silently.
+
+    `{{URL}}` and `{{PORT}}` are substituted when the file is written, because
+    the target takes an ephemeral port. A scenario whose defect **is** the
+    address simply does not use the markers, and then nothing reaching the
+    target at all is the correct and most instructive failure.
+    """
+
+    brief: str
+    filename: str
+    broken: str
+    solution: str
+    requirements: tuple
+    defects: tuple[str, ...] = ()
+    kind: str = 'http'                  # http | tcp
+    route: str = '/'
+    banner: bytes = b''
+    reject_code: int = 400
+    reject_message: str = 'Bad request'
+    debrief: str = ''
+
+    def render(self, source: str, url: str, port: int) -> str:
+        return source.replace('{{URL}}', url).replace('{{PORT}}', str(port))
+
+
+@dataclass(frozen=True, slots=True)
 class StubBody:
     """A track whose engine is not built yet.
 

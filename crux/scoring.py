@@ -166,3 +166,55 @@ def score_marks(leads, decoys, marked, action_ok: bool | None = None,
         no_lead=not leads,
         elapsed=elapsed,
     )
+
+
+# --------------------------------------------------------------------------
+# salvage
+# --------------------------------------------------------------------------
+
+@dataclass(frozen=True, slots=True)
+class RunScore:
+    """The result of one salvage attempt.
+
+    **Binary on purpose.** An exploit that satisfies three of four conditions
+    does not work, and a score that awarded 75 for it would be teaching
+    something false about the job. What the partial progress *is* good for is
+    feedback, so `met` and `total` ride along and the screen shows them
+    prominently; they simply do not enter the number that lands in history.
+
+    `runs` and `read_first` are recorded rather than scored, for the same
+    reason elapsed time is (crux D12): `proctor` will want the pacing data,
+    and the read-before-you-run capstone of crux D19 in Phase 4 will want to
+    know whether the file was ever opened before it was executed. Neither can
+    be backfilled.
+    """
+
+    landed: bool
+    met: int
+    total: int
+    detail: str
+    runs: int = 0
+    read_first: bool | None = None
+    elapsed: float = 0.0
+
+    @property
+    def total_score(self) -> float:
+        return 100.0 if self.landed else 0.0
+
+    @property
+    def band(self) -> str:
+        return 'clean' if self.landed else 'lost'
+
+    def summary(self) -> str:
+        if self.landed:
+            n = self.runs
+            return f'landed after {n} run{"" if n == 1 else "s"}'
+        if not self.runs:
+            return 'not run yet'
+        return f'{self.met} of {self.total} conditions met'
+
+
+def score_run(landed: bool, met: int, total: int, detail: str, runs: int,
+              read_first: bool | None = None, elapsed: float = 0.0) -> RunScore:
+    return RunScore(landed=landed, met=met, total=total, detail=detail,
+                    runs=runs, read_first=read_first, elapsed=elapsed)

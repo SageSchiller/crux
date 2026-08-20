@@ -27,20 +27,20 @@ Python 3, standard library only. No pip, no network, ever.
 
 ## Status
 
-**Phase 2 complete: the `sift` track is done.** Twenty-six scenarios across
-seven families: port scans, web content discovery, `sudo -l`, SMB shares,
-local enumeration output, listening sockets, and HTTP responses. Six of them
-contain no lead at all, because recognising a screen with nothing on it is
-part of the skill.
+**Phase 3 complete.** `sift` is done: twenty-six scenarios across seven
+families, six of which contain no lead at all. `salvage` runs: five broken
+proof-of-concepts, four against an instrumented HTTP service and one against a
+raw TCP daemon, all of them scored by crux actually being the target.
 
-`salvage` and `conduit` say on screen that their engines are not written yet.
-See `CRUX-PLAN.md`, which is the file to read first.
+`conduit` says on screen that its engine is not written yet. See
+`CRUX-PLAN.md`, which is the file to read first.
 
 ## After any change
 
 ```bash
 python3 validate.py    # structure and content invariants; authoritative on counts
 python3 validate.py --scores   # what canonical play patterns score, per scenario
+python3 validate.py --fast     # skip running the salvage solutions (~1.5s faster)
 python3 test.py        # behaviour; must be green
 python3 test-tty.py    # optional third suite, drives the real app in a real pty
 ```

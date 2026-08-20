@@ -20,7 +20,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from crux import render as R
 from crux.config import EXIT_CHORD, TIERS, TRACKS, vault_dir
 from crux.loader import load
-from crux.model import LINE_KINDS, MarkBody, Scenario, StubBody, roles
+from crux.model import (LINE_KINDS, MarkBody, SalvageBody, Scenario,
+                        StubBody, roles)
 from crux.scoring import DECOY_WEIGHT, score_marks
 from crux.screens import Screen
 from crux.version import VERSION
@@ -61,6 +62,8 @@ def check_scenario(s: Scenario) -> None:
 
     if isinstance(s.body, MarkBody):
         check_mark_body(s)
+    elif isinstance(s.body, SalvageBody):
+        check_salvage_body(s)
     elif isinstance(s.body, StubBody):
         if s.tier != 'self':
             err(f'{s.id}: a stub must be self tier, not {s.tier!r} '
@@ -69,6 +72,84 @@ def check_scenario(s: Scenario) -> None:
             err(f'{s.id}: a stub must name the phase that builds it')
     else:
         err(f'{s.id}: unknown body type {type(s.body).__name__}')
+
+
+def check_salvage_body(s: Scenario) -> None:
+    """Structure only. The solution is actually run by `check_salvage_runs`."""
+    b: SalvageBody = s.body
+    if s.tier != 'verified':
+        err(f'{s.id}: salvage is verified, not {s.tier!r} (crux D6: crux is '
+            'the target, so it is not taking anybody word for this)')
+    if b.kind not in ('http', 'tcp'):
+        err(f'{s.id}: unknown target kind {b.kind!r}')
+    if not b.requirements:
+        err(f'{s.id}: no requirements, so nothing could ever land')
+    if not b.brief.strip():
+        err(f'{s.id}: no brief')
+    if not b.defects:
+        warn(f'{s.id}: names no defect classes, so the result screen cannot '
+             'say what was wrong with the original')
+    if b.broken == b.solution:
+        err(f'{s.id}: the broken script and the solution are identical')
+    if '{{PORT}}' in b.broken and b.kind == 'http':
+        warn(f'{s.id}: an http scenario substitutes PORT rather than URL')
+    for q in b.requirements:
+        if not q.hint.strip():
+            warn(f'{s.id}: requirement {q.name!r} has no hint, so a student '
+                 'who misses it is told only that they missed it')
+    if not s.source:
+        warn(f'{s.id}: no provenance (crux D11)')
+
+
+def check_salvage_runs(reg) -> None:
+    """Run every reference solution against a real target, and every broken
+    script too.
+
+    **This is the check that makes the track trustworthy.** A salvage scenario
+    can fail in two directions and both ship silently: a solution that does
+    not actually land makes the scenario unsolvable, and a broken script that
+    lands anyway makes it pointless. Neither is visible by reading the source.
+    So both are executed, against the same mock service the student will face.
+
+    It found one on its first run: the TCP target stopped reading at the first
+    newline, so the handshake scenario reference solution scored *lower* than
+    the broken script it was supposed to fix.
+    """
+    import subprocess
+    import tempfile
+
+    from crux.targets.mockhttp import MockHttp
+    from crux.targets.mocktcp import MockTcp
+
+    for s in reg.scenarios:
+        b = s.body
+        if not isinstance(b, SalvageBody):
+            continue
+        for label, src, want in (('solution', b.solution, True),
+                                 ('broken', b.broken, False)):
+            target = (MockTcp(b.requirements, banner=b.banner) if b.kind == 'tcp'
+                      else MockHttp(b.requirements, route=b.route,
+                                    reject_code=b.reject_code,
+                                    reject_message=b.reject_message))
+            with target:
+                work = Path(tempfile.mkdtemp(prefix='crux-validate-'))
+                path = work / b.filename
+                path.write_text(b.render(src, getattr(target, 'url', ''),
+                                         target.port), encoding='utf-8')
+                try:
+                    subprocess.run([sys.executable, str(path)], cwd=str(work),
+                                   capture_output=True, timeout=30)
+                except subprocess.TimeoutExpired:
+                    err(f'{s.id}: the {label} script did not finish in 30s')
+                    continue
+                landed, detail, met = target.verdict()
+                if landed and not want:
+                    err(f'{s.id}: the BROKEN script lands, so the exercise '
+                        'teaches nothing')
+                elif want and not landed:
+                    err(f'{s.id}: the reference solution does not land '
+                        f'({met}/{len(b.requirements)}: {detail}), so the '
+                        'scenario is unsolvable')
 
 
 #: Seeds every fixture is built at. Not a round number of consecutive
@@ -301,6 +382,8 @@ def main() -> int:
     check_provenance(reg)
     check_scaffolding(reg)
     score_profile(reg, verbose='--scores' in sys.argv)
+    if '--fast' not in sys.argv:
+        check_salvage_runs(reg)
     check_ascii_rung()
     check_content_ascii(reg)
     check_exit_chord(reg)
@@ -323,6 +406,19 @@ def main() -> int:
           f'{total_actions} action(s), {no_lead} with no lead')
     print(f'  seeds     each fixture built at {len(PROBE_SEEDS)} seeds, '
           'key stable across all')
+    salv = [s for s in reg.scenarios if isinstance(s.body, SalvageBody)]
+    if salv:
+        reqs = sum(len(s.body.requirements) for s in salv)
+        defects = sum(len(s.body.defects) for s in salv)
+        http = sum(1 for s in salv if s.body.kind == 'http')
+        print(f'  salvage   {len(salv)} scripts ({http} http, '
+              f'{len(salv) - http} tcp), {reqs} requirement(s), '
+              f'{defects} defect(s)')
+        if '--fast' in sys.argv:
+            print('  note      --fast: reference solutions were NOT run')
+        else:
+            print(f'  proven    every solution landed and every broken script '
+                  f'failed, against a real target')
 
     for w in WARNINGS:
         print(f'  WARN  {w}')

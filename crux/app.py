@@ -133,6 +133,11 @@ def run(argv: list[str] | None = None) -> int:
     stack: list[S.Screen] = [HomeScreen(session)]
 
     with T.managed(use_alt_screen=not args.no_alt_screen) as tty:
+        # Screens that hand the terminal back for an editor or a subprocess
+        # need the Terminal itself. Held on the session rather than threaded
+        # through every constructor, and None outside a TTY so the handover
+        # helper can degrade to running in place.
+        session.terminal = tty
         try:
             while stack:
                 cols, rows = T.size()

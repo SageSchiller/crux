@@ -167,6 +167,28 @@ def main() -> int:
         back = d.send(b'H')
         ok('CRUX' in back, 'H returns to the picker from three deep')
         ok('attempted' in back, 'the attempt was recorded and shown')
+
+        # salvage: the handover is the part no other suite can exercise. It
+        # restores the terminal, runs a subprocess against a live loopback
+        # target, and takes the terminal back.
+        d.send(b'\x1b[B')
+        salv = d.send(b'\r')
+        ok('salvage' in salv, 'the salvage track opens')
+        first = d.send(b'\r')
+        ok('http://127.0.0.1:' in first, 'the screen names a loopback target')
+        ok('e edit' in first and 'r run' in first,
+           'the salvage screen advertises edit and run')
+        ok('Read it before you run it' in first,
+           'and says so before the first run')
+
+        ran = d.send(b'r')
+        ok('press Enter to return' in ran or 'Traceback' in ran
+           or 'SyntaxError' in ran,
+           'running hands the terminal over to a real subprocess')
+        after = d.send(b'\r')
+        ok('1 run' in after, 'the run was counted')
+        ok('conditions met' in after or 'Closest attempt' in after,
+           'and the screen reports how close it got')
     finally:
         code = d.close()
 

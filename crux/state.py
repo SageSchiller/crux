@@ -53,6 +53,11 @@ class Attempt:
     seed: int = 0
     marked: tuple[str, ...] = ()
     action_ok: bool | None = None
+    #: salvage only. Recorded, never scored: `proctor` needs the pacing and
+    #: the crux D19 capstone needs to know whether the file was ever opened
+    #: before it was executed. Neither can be backfilled.
+    runs: int = 0
+    read_first: bool | None = None
 
     @classmethod
     def from_dict(cls, d: dict) -> Attempt:
@@ -69,6 +74,8 @@ class Attempt:
             seed=int(d.get('seed', 0)),
             marked=tuple(d.get('marked') or ()),
             action_ok=d.get('action_ok'),
+            runs=int(d.get('runs', 0)),
+            read_first=d.get('read_first'),
         )
 
 

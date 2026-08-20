@@ -28,7 +28,8 @@ from crux import render as R                                  # noqa: E402
 from crux.clock import FakeClock, Stopwatch, fmt              # noqa: E402
 from crux.config import MIN_COLS, MIN_ROWS, TRACKS            # noqa: E402
 from crux.loader import load                                  # noqa: E402
-from crux.model import ContentError, Line, MarkBody, Scenario, roles  # noqa: E402
+from crux.model import (ContentError, Line, MarkBody, SalvageBody,  # noqa: E402
+                        Scenario, roles)
 from crux.scoring import DECOY_WEIGHT, band, score_marks      # noqa: E402
 from crux.screens import Screen                               # noqa: E402
 from crux.screens.help import HelpScreen                      # noqa: E402
@@ -233,7 +234,8 @@ def test_loader() -> None:
     ok(reg.by_id('sift-nmap-pinned') is not None, 'lookup by id')
     ok(reg.by_id('nope') is None, 'unknown id returns None')
     ok(reg.track('sift').ready, 'sift has a real engine')
-    ok(not reg.track('salvage').ready, 'salvage is honestly marked unbuilt')
+    ok(reg.track('salvage').ready, 'salvage has a real engine now')
+    ok(not reg.track('conduit').ready, 'conduit is honestly marked unbuilt')
     ok(len(reg.track('sift').scenarios) >= 9, 'sift has real breadth')
     ok(reg.by_id('sift-smoke-nmap') is None,
        'Phase 0 scaffolding was deleted, not left beside real content')
@@ -322,7 +324,7 @@ def _screens(session):
 
     sift = session.registry.by_id('sift-nmap-pinned')
     wide = session.registry.by_id('sift-nmap-dc')
-    stub = session.registry.by_id('salvage-smoke')
+    stub = session.registry.by_id('conduit-smoke')
     mark = MarkScreen(session, sift, seed=0)
     lead = sorted(mark.leads)[0]
     watch = Stopwatch(session.clock)
@@ -390,6 +392,156 @@ def test_every_scenario_renders() -> None:
                    f'{sc.id}: non-ASCII leaked into the ASCII rung')
                 ok(any(h[1] == 'submit' for h in scr.hints(caps)),
                    f'{sc.id}: offers a way to submit')
+
+
+def test_mock_targets() -> None:
+    """The two mock services, including the line protocol that got fixed."""
+    import socket
+    import urllib.error
+    import urllib.request
+
+    from crux.targets._hits import HitRecord, Request, Requirement
+    from crux.targets.mockhttp import MockHttp
+    from crux.targets.mocktcp import MockTcp
+
+    reqs = (Requirement('verb', 'method', 'POST', hint='must be POST'),
+            Requirement('path', 'route', '/a/b', hint='wrong endpoint'),
+            Requirement('field', 'form', 'zap', key='cmd', hint='no payload'))
+
+    def send(url, data=None, headers=None):
+        try:
+            return urllib.request.urlopen(
+                urllib.request.Request(url, data=data,
+                                       headers=headers or {})).read()
+        except urllib.error.HTTPError as e:
+            return e.read()
+
+    with MockHttp(reqs, route='/a/b') as t:
+        ok(t.port > 0, 'the http target got a port')
+        ok(t.url.startswith('http://127.0.0.1:'),
+           'the http target binds loopback only (crux D2)')
+        eq(t.verdict()[0], False, 'nothing landed before anything was sent')
+        eq(t.verdict()[1], 'Nothing reached the target at all.',
+           'an untouched target says so')
+
+        send(f'{t.url}/wrong', data=b'cmd=zap')
+        eq(t.verdict()[1], 'wrong endpoint', 'names the first unmet condition')
+        eq(t.verdict()[2], 2, 'counts what the closest attempt did meet')
+
+        send(f'{t.url}/a/b', data=b'cmd=nope')
+        eq(t.verdict()[1], 'no payload', 'moves on to the next unmet one')
+
+        body = send(f'{t.url}/a/b', data=b'cmd=zap').decode()
+        ok(t.verdict()[0], 'a fully correct request lands')
+        ok('CRUX-LANDED' in body, 'the target says so in its response too')
+        eq(t.record.count, 3, 'every request was recorded')
+    eq(t.port, 0, 'the port is released on stop')
+    t.stop()
+    ok(True, 'stop is idempotent')
+
+    # The line protocol. A single-read target scored the two-line handshake on
+    # its first line only, which made the reference solution fail.
+    tcp = (Requirement('auth', 'raw', 'AUTH tok', hint='no auth line'),
+           Requirement('cmd', 'raw', 'GO', hint='no command'))
+    with MockTcp(tcp, banner=b'ready\n') as t:
+        s1 = socket.create_connection(('127.0.0.1', t.port), timeout=5)
+        eq(s1.recv(64), b'ready\n', 'the banner is sent first')
+        s1.sendall(b'GO now\n')
+        ok(b'ERR' in s1.recv(64), 'a command without auth is refused')
+        s1.close()
+        eq(t.verdict()[0], False, 'and it did not land')
+
+        s2 = socket.create_connection(('127.0.0.1', t.port), timeout=5)
+        s2.recv(64)
+        s2.sendall(b'AUTH tok\n')
+        ok(b'ERR' in s2.recv(64), 'auth alone is not enough')
+        s2.sendall(b'GO now\n')
+        ok(b'CRUX-LANDED' in s2.recv(64),
+           'two lines in one connection land (the line-protocol fix)')
+        s2.close()
+        ok(t.verdict()[0], 'the record agrees')
+
+    rec = HitRecord(())
+    eq(rec.landed(), False, 'a target with no requirements never lands')
+
+
+def test_salvage_content() -> None:
+    """Every solution lands and every broken script does not.
+
+    `validate.py` runs these as subprocesses against a live target, which is
+    the authoritative check. This one is cheaper and structural: it asserts
+    the pair exists, differs, and is wired to requirements that can be met.
+    """
+    reg = load()
+    salv = [s for s in reg.track('salvage').scenarios
+            if isinstance(s.body, SalvageBody)]
+    ok(len(salv) >= 5, f'{len(salv)} salvage scenarios; the plan wants 5')
+    kinds = {s.body.kind for s in salv}
+    ok('tcp' in kinds and 'http' in kinds,
+       'both mock targets are exercised by real content, not only by tests')
+    for sc in salv:
+        b = sc.body
+        eq(sc.tier, 'verified', f'{sc.id}: salvage is verified')
+        ok(b.broken != b.solution, f'{sc.id}: the pair differs')
+        ok(bool(b.requirements), f'{sc.id}: has requirements')
+        ok(all(q.hint for q in b.requirements),
+           f'{sc.id}: every requirement can explain itself')
+        ok(bool(b.defects), f'{sc.id}: names its defect classes')
+        rendered = b.render(b.broken, 'http://127.0.0.1:1', 1)
+        # Not a bare '{{' check: the template-injection payload legitimately
+        # contains one, which is the whole point of that scenario.
+        for marker in ('{{URL}}', '{{PORT}}'):
+            ok(marker not in rendered,
+               f'{sc.id}: {marker} was not substituted')
+
+
+def test_salvage_screen() -> None:
+    """The screen opens a real target, writes the file, and scores a run."""
+    from crux.screens.salvage import SalvageScreen
+    from crux.screens.runresult import RunResultScreen
+    import subprocess
+
+    session = Session.open(clock=FakeClock(), read_only=True)
+    sc = session.registry.by_id('salvage-encoding')
+    scr = SalvageScreen(session, sc)
+    try:
+        eq(scr.error, '', 'the target opened')
+        ok(scr.path is not None and scr.path.exists(),
+           'the broken script was written to disk')
+        ok('{{' not in scr.path.read_text(), 'the markers were substituted')
+        ok(scr.url.startswith('http://127.0.0.1:'), 'loopback only')
+
+        caps = all_caps()[0]
+        ok(bool(scr.render(caps)), 'the salvage screen renders')
+        ok(any(h[0] == 'r' for h in scr.hints(caps)), 'it offers run')
+
+        # Running the broken script must not land, and must say why.
+        scr._run()
+        eq(scr.runs, 1, 'the run was counted')
+        eq(scr.read_first, False,
+           'running without opening it first is recorded (crux D19)')
+        landed, detail, met = scr.target.verdict()
+        ok(not landed, 'the broken script does not land')
+        ok('survive' in detail, 'and the feedback names the encoding gap')
+
+        # Now the reference fix, through the same screen.
+        scr.path.write_text(sc.body.render(sc.body.solution, scr.url, 0))
+        action = scr._run()
+        eq(action.kind, 'replace', 'landing moves to the result screen')
+        res = action.screen
+        ok(isinstance(res, RunResultScreen), 'and it is the run result')
+        ok(res.score.landed, 'the score says it landed')
+        eq(res.score.total_score, 100.0, 'a landed exploit scores 100')
+        eq(res.score.runs, 2, 'both runs were counted')
+        ok(bool(res.render(caps)), 'the result screen renders')
+        eq(len(session.state.attempts), 1, 'exactly one attempt recorded')
+        eq(session.state.attempts[0].runs, 2, 'runs reached history')
+        eq(session.state.attempts[0].read_first, False,
+           'read_first reached history')
+    finally:
+        scr.close()
+        scr.close()
+    ok(True, 'closing the salvage screen twice is safe')
 
 
 def test_screen_contract() -> None:
@@ -545,6 +697,7 @@ def main() -> int:
     for fn in (test_keys, test_render_primitives, test_scoring, test_clock,
                test_state, test_model_guards, test_loader, test_fixtures,
                test_scoring_over_real_content, test_every_scenario_renders,
+               test_mock_targets, test_salvage_content, test_salvage_screen,
                test_screens_render, test_screen_contract, test_walkthrough,
                test_stub_records_nothing, test_session_persists, test_panning):
         fn()
