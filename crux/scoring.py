@@ -14,10 +14,23 @@ Worked example, on a forty-line screen with two leads and three decoys:
 * find one lead, chase nothing: precision 1.0, recall 0.5, **67**
 * find both leads, chase one decoy: precision 0.5, recall 1.0, **67**
 
-The last two landing on the same number is the point of the whole design, and
-was checked against real scores rather than assumed: **missing a lead and
-chasing a decoy cost the same**. A scorer that punished only one of them would
-teach the other.
+The last two landing on the same number is the point of the whole design:
+**on a screen with more than one lead, missing one costs what chasing a decoy
+costs**. A scorer that punished only one of them would teach the other.
+
+That symmetry does not hold, and should not, when a screen has exactly one
+lead. Missing it means you came away with nothing, so it scores zero while
+chasing a decoy alongside a correct find scores 50. Half the content is
+single-lead, so this is the common case rather than an edge one, and it is
+correct: "found nothing" and "found it and also chased something" are not the
+same outcome.
+
+**`DECOY_WEIGHT` is measured, not guessed.** Profiled across all 26 authored
+scenarios with `validate.py --scores`: at 2.0 marking everything averages 11
+out of 100 and never exceeds 21; at 3.0 the greedy average only moves to 10,
+while chasing one decoy on a two-lead screen drops to 57 against 67 for
+missing a lead, which inverts the relationship this scorer exists to express.
+2.0 stays.
 
 **The no-lead case (crux D9).** Some screens contain nothing. Recall is
 vacuously satisfied and the only thing left to measure is restraint, so the
@@ -36,8 +49,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 #: A decoy is authored to tempt, so chasing one costs double a stray mark.
-#: Not tuned yet: crux Phase 2 tunes this against real scores rather than
-#: guesses, which is why the number lives here alone and named.
+#: Profiled over the whole content set in Phase 2; see the module docstring
+#: for the numbers that kept it at 2.0 rather than 3.0.
 DECOY_WEIGHT = 2.0
 
 #: What the `act` beat is worth when a scenario has one. Marking is three

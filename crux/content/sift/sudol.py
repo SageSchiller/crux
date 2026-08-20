@@ -176,7 +176,7 @@ SCENARIOS = [
     Scenario(id='sift-sudo-wildcard', track='sift', tier='graded', order=210,
              title='Four sudo grants, one with a star in it',
              body=_WILDCARD, waypoint='lin-sudo', hone=('linuxadv',),
-             source=f'{BOXES}/VulnLab/LaVita/LaVita - Writeup.md'),
+             source=f'{BOXES}/Proving Grounds/LaVita/LaVita - Writeup.md'),
     Scenario(id='sift-sudo-gtfo', track='sift', tier='graded', order=220,
              title='Three sudo grants, none with a wildcard',
              body=_GTFO, waypoint='lin-sudo-script', hone=('linuxadv',),

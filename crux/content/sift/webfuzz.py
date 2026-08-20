@@ -16,6 +16,7 @@ from ...model import Action, MarkBody, Scenario
 from ...targets._fixture import FeroxRun, Hit
 
 BOXES = 'Boxes/Linux'
+PLAYBOOK = 'PEN-200 Playbook'
 
 # --------------------------------------------------------------------------
 # 1. A size that does not match its neighbours
@@ -25,19 +26,22 @@ _SIZE = MarkBody(
     prompt='A content-discovery run against the application root. Mark every '
            'line that changes what you do next.',
     fixture=FeroxRun(
-        host='siteisup.htb',
+        host='10.10.10.55',
         noise=(16, 24),
         hits=(
-            Hit('/dev', 200, 14877, kind='lead', exact=True),
+            Hit('/index.php.bak', 200, 14877, kind='lead', exact=True),
             Hit('/uploads', 301, kind='decoy'),
             Hit('/admin', 403, kind='decoy'),
         ),
     ),
     actions=(
-        Action('Request `/dev` and read what is there.', True,
-               'A 200 on a path that is not part of the site is the whole '
-               'finding. `dev` directories are left behind, not deployed, and '
-               'what is in them was never meant to be reachable.'),
+        Action('Fetch `/index.php.bak` and read the source of the live login '
+               'page.', True,
+               'A `.bak` next to a `.php` is source the server will hand you '
+               'as plaintext instead of executing, because it does not end in '
+               '`.php` any more. Its size is the tell: it is three times the '
+               'rendered pages around it, which is what source looks like '
+               'next to output.'),
         Action('Try to list `/uploads`, since uploads are usually writable.',
                why='A 301 to a directory that almost certainly returns a '
                    'listing or an index page. Worth a look, but "uploads '
@@ -45,9 +49,9 @@ _SIZE = MarkBody(
                    'upload from.'),
         Action('Attack `/admin`: it returns 403, so it is protected and '
                'therefore valuable.',
-               why='The seductive one. A 403 does prove the path exists, '
-                   'which is worth knowing, but a forbidden admin panel with '
-                   'no credential and no bypass is a wall. `/dev` is open.'),
+               why='A 403 does prove the path exists, which is worth knowing, '
+                   'but a forbidden admin panel with no credential and no '
+                   'bypass is a wall. The backup file is readable right now.'),
         Action('Re-run with a larger wordlist and more extensions first.',
                why='The reflex that eats exam time. You already have a hit '
                    'you have not read. Read it before you ask for more.'),
@@ -56,7 +60,9 @@ _SIZE = MarkBody(
             'Status codes cluster: a wall of 301s and 403s is the shape of a '
             'normal site. A 200 on a path that is not part of the '
             'application, or a size that does not match the other responses '
-            'of its status, is where you look first.',
+            'of its status, is where you look first. An editor or a deploy '
+            'script left `.bak`, `.old`, `~` or `.swp` behind more often than '
+            'anyone would like.',
 )
 
 # --------------------------------------------------------------------------
@@ -70,26 +76,27 @@ _FORBIDDEN = MarkBody(
         host='10.10.11.108',
         noise=(18, 26),
         hits=(
-            Hit('/.git', 403, kind='lead'),
+            Hit('/dev', 403, kind='lead'),
             Hit('/phpmyadmin', 403, kind='decoy'),
             Hit('/backup', 301, kind='decoy'),
         ),
     ),
     actions=(
-        Action('Try to pull the repository: `/.git/HEAD`, then dump it if the '
-               'objects are readable.', True,
-               'A 403 on `/.git` means the directory is **there**. The server '
-               'refuses to list it, which says nothing about whether the '
-               'files inside it can be fetched directly, and a readable '
-               '`.git` is the entire source tree plus its history.'),
+        Action('Treat the 403 on `/dev` as proof it exists, and go looking '
+               'for names inside it: `/dev/.git/HEAD` first.', True,
+               'The server refusing to list a directory says nothing about '
+               'whether files inside it can be fetched by name. On the box '
+               'this comes from, `/dev/.git` was exposed and dumping it '
+               'returned the full source tree.'),
         Action('Brute-force the phpMyAdmin login.',
                why='A real install and a real wall. Guessing database '
                    'credentials against a login page is the slowest path on '
                    'this screen.'),
         Action('Enumerate `/backup` for archive filenames.',
                why='Reasonable and often productive, but it is a guessing '
-                   'game about names. The `.git` directory has a known '
-                   'internal layout you do not have to guess at.'),
+                   'game about names. A `.git` directory has a known internal '
+                   'layout you do not have to guess at, which is why it is '
+                   'worth testing for first.'),
         Action('Nothing useful: every interesting path returns 403.',
                why='The mistake this scenario is built around. **403 is not a '
                    'dead end, it is an existence proof.** A 404 says nothing '
@@ -100,7 +107,8 @@ _FORBIDDEN = MarkBody(
             'a page everyone can see. The question is never "am I allowed to '
             'list this", it is "is there a file inside it whose name I '
             'already know". For `.git`, `.svn`, and `.DS_Store`, you always '
-            'know the names.',
+            'know the names. A `dev` directory is also a name worth trying as '
+            'a virtual host, not only as a path.',
 )
 
 # --------------------------------------------------------------------------
@@ -148,16 +156,16 @@ _WILDCARD = MarkBody(
 SCENARIOS = [
     Scenario(id='sift-web-size', track='sift', tier='graded', order=110,
              title='Content discovery, one row out of place',
-             body=_SIZE, waypoint='web-discovery', hone=('ffuf', 'gobuster'),
-             source=f'{BOXES}/HackTheBox/SiteIsUp/SiteIsUp - Writeup.md'),
+             body=_SIZE, waypoint='web-review', hone=('ffuf', 'gobuster'),
+             source=f'{PLAYBOOK}/03 - Phase 3 - Web Enumeration & Fuzzing.md'),
     Scenario(id='sift-web-forbidden', track='sift', tier='graded', order=120,
              title='Everything interesting returns 403',
              body=_FORBIDDEN, waypoint='web-discovery',
              hone=('ffuf', 'gobuster'),
-             source=f'{BOXES}/HackTheBox/Nunchucks/Nunchucks - Writeup.md'),
+             source=f'{BOXES}/HackTheBox/UpDown/UpDown - Writeup.md'),
     Scenario(id='sift-web-wildcard', track='sift', tier='graded', order=130,
              title='Two hundred hits and the same number in every row',
              body=_WILDCARD, waypoint='web-baseline',
              hone=('ffuf', 'gobuster'),
-             source='Boxes/00 - Privesc Quick Reference.md'),
+             source=f'{PLAYBOOK}/03 - Phase 3 - Web Enumeration & Fuzzing.md'),
 ]

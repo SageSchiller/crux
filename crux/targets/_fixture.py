@@ -373,3 +373,331 @@ class SudoL(Fixture):
         for g in grants:
             out.append(Line(_slug('g', g.text), '    ' + g.text, g.kind))
         return tuple(out)
+
+
+# --------------------------------------------------------------------------
+# SMB share enumeration
+# --------------------------------------------------------------------------
+
+@dataclass(frozen=True, slots=True)
+class Share:
+    name: str
+    type: str = 'Disk'
+    comment: str = ''
+    perms: str = ''
+    kind: str = 'noise'
+
+
+#: Present on essentially every Windows host. A scenario that did not include
+#: them would be teaching people to read a screen they will never see.
+_DEFAULT_SHARES = (
+    Share('ADMIN$', 'Disk', 'Remote Admin'),
+    Share('C$', 'Disk', 'Default share'),
+    Share('IPC$', 'IPC', 'Remote IPC'),
+    Share('print$', 'Disk', 'Printer Drivers'),
+)
+
+
+class SmbShares(Fixture):
+    """Share enumeration, in one of two real output shapes.
+
+    `style='nxc'` reproduces `nxc smb --shares`, whose every row is prefixed
+    with protocol, address, port and NetBIOS name. That prefix costs about
+    fifty columns before any content starts, which is authentic and is also
+    why it is not the default: a screen where **every** line needs panning is
+    a screen nobody reads. It is the right choice only when the tell is in the
+    banner, where the domain name, the build and the signing state live.
+
+    `style='smbclient'` reproduces `smbclient -L`, which is compact and is
+    what a share name has to stand out against most of the time.
+    """
+
+    def __init__(self, host: str, netbios: str, domain: str,
+                 shares: tuple[Share, ...], user: str = 'guest',
+                 signing: bool = True, os_name: str = 'Windows Server 2022 '
+                                                      'Build 20348 x64',
+                 include_defaults: bool = True,
+                 style: str = 'smbclient') -> None:
+        self.style = style
+        self.host = host
+        self.netbios = netbios
+        self.domain = domain
+        self.shares = shares
+        self.user = user
+        self.signing = signing
+        self.os_name = os_name
+        self.include_defaults = include_defaults
+
+    def _all_shares(self, r: random.Random) -> list[Share]:
+        shares = list(self.shares)
+        if self.include_defaults:
+            taken = {sh.name for sh in shares}
+            shares += [sh for sh in _DEFAULT_SHARES if sh.name not in taken]
+        r.shuffle(shares)
+        # Real listings put the administrative `$` shares together, so the
+        # interesting one does not get to stand out merely by being adjacent
+        # to nothing.
+        shares.sort(key=lambda sh: sh.name.endswith('$'))
+        return shares
+
+    def build(self, seed: int) -> tuple[Line, ...]:
+        r = _rng(seed)
+        ip = self.host or _host_ip(r)
+        shares = self._all_shares(r)
+        out: list[Line] = []
+
+        if self.style == 'nxc':
+            pre = f'SMB   {ip:<15} 445  {self.netbios:<10} '
+            out.append(Line('h1', pre + f'[*] {self.os_name} '
+                                        f'(domain:{self.domain}) '
+                                        f'(signing:{self.signing}) '
+                                        f'(SMBv1:False)',
+                            'lead' if not self.signing else 'noise'))
+            out.append(Line('h2', pre + f'[+] {self.domain}\\{self.user}: '))
+            out.append(Line('h3', pre + '[*] Enumerated shares'))
+            out.append(Line('h4', pre + 'Share        Permissions  Remark'))
+            out.append(Line('h5', pre + '-----        -----------  ------'))
+            for sh in shares:
+                out.append(Line(_slug('s', sh.name),
+                                pre + f'{sh.name:<12} {sh.perms:<12} '
+                                      f'{sh.comment}',
+                                sh.kind))
+            return tuple(out)
+
+        out.append(Line('h1', f'Anonymous login successful'))
+        out.append(Line('h2', ''))
+        out.append(Line('h3', '        Sharename       Type      Comment'))
+        out.append(Line('h4', '        ---------       ----      -------'))
+        for sh in shares:
+            row = f'        {sh.name:<15} {sh.type:<9} {sh.comment}'
+            if sh.perms:
+                row += f'  [{sh.perms}]'
+            out.append(Line(_slug('s', sh.name), row.rstrip(), sh.kind))
+        out.append(Line('t1', ''))
+        out.append(Line('t2', 'Reconnecting with SMB1 for workgroup listing.'))
+        out.append(Line('t3', 'do_connect: Connection to '
+                              f'{ip} failed (Error NT_STATUS_RESOURCE_'
+                              'NAME_NOT_FOUND)'))
+        out.append(Line('t4', 'Unable to connect with SMB1 -- no workgroup '
+                              'available'))
+        return tuple(out)
+
+
+# --------------------------------------------------------------------------
+# Local enumeration output (linpeas-shaped)
+# --------------------------------------------------------------------------
+
+@dataclass(frozen=True, slots=True)
+class Section:
+    """One titled block of enumeration output."""
+
+    title: str
+    rows: tuple[Note, ...]
+
+
+class PeasChunk(Fixture):
+    """A slice of a local enumeration script's output.
+
+    **ASCII only, deliberately.** The real tool draws its section headers with
+    box-drawing characters, and reproducing them would put non-ASCII into
+    content that has to survive the ASCII rung on a terminal that cannot
+    render it. The substance being drilled is the file list, not the border,
+    and the tool degrades to ASCII on such a terminal anyway.
+
+    Section order is shuffled; row order inside a section is not, because a
+    directory listing has an order and scrambling it would look wrong to
+    anyone who has read one.
+    """
+
+    def __init__(self, sections: tuple[Section, ...], user: str = 'www-data',
+                 shuffle_sections: bool = True) -> None:
+        self.sections = sections
+        self.user = user
+        self.shuffle_sections = shuffle_sections
+
+    def build(self, seed: int) -> tuple[Line, ...]:
+        r = _rng(seed)
+        sections = list(self.sections)
+        if self.shuffle_sections:
+            r.shuffle(sections)
+
+        out: list[Line] = []
+        for i, sec in enumerate(sections):
+            out.append(Line(f'sec{i}', ''))
+            out.append(Line(_slug('h', sec.title),
+                            f'====( {sec.title} )' + '=' * max(
+                                0, 56 - len(sec.title))))
+            for row in sec.rows:
+                out.append(Line(_slug('r', row.text), row.text, row.kind))
+        return tuple(out)
+
+
+# --------------------------------------------------------------------------
+# Listening sockets
+# --------------------------------------------------------------------------
+
+@dataclass(frozen=True, slots=True)
+class Socket:
+    proto: str
+    local: str
+    state: str = 'LISTEN'
+    program: str = '-'
+    kind: str = 'noise'
+    foreign: str = '0.0.0.0:*'
+
+
+#: Sockets a stock Linux server is listening on before anybody deploys
+#: anything. Real `netstat -tulpn` on a server is fifteen to twenty rows, not
+#: six, and the scoring profile is what showed that the fixtures were short:
+#: on a nine-line screen, marking everything scored 31 rather than the 5 it
+#: scores on a realistic one. A screen too small to be wrong on is a screen
+#: that cannot teach restraint.
+_NOISE_SOCKETS: tuple[Socket, ...] = (
+    Socket('tcp', '0.0.0.0:111', program='1/systemd'),
+    Socket('tcp', '0.0.0.0:25', program='1044/master'),
+    Socket('tcp', '127.0.0.1:25', program='1044/master'),
+    Socket('tcp', '0.0.0.0:631', program='702/cupsd'),
+    Socket('tcp6', ':::22', program='-'),
+    Socket('tcp6', ':::111', program='1/systemd'),
+    Socket('udp', '0.0.0.0:111', state='', program='1/systemd'),
+    Socket('udp', '0.0.0.0:631', state='', program='702/cups-browsed'),
+    Socket('udp', '0.0.0.0:5353', state='', program='688/avahi-daemon'),
+    Socket('udp6', ':::5353', state='', program='688/avahi-daemon'),
+)
+
+
+class NetstatDump(Fixture):
+    """`netstat -tulpn` output, sorted the way netstat sorts it."""
+
+    def __init__(self, sockets: tuple[Socket, ...],
+                 header: str = 'Active Internet connections (only servers)',
+                 noise: tuple[int, int] = (5, 8)) -> None:
+        self.sockets = sockets
+        self.header = header
+        self.noise = noise
+
+    def build(self, seed: int) -> tuple[Line, ...]:
+        r = _rng(seed)
+        out = [
+            Line('h1', self.header),
+            Line('h2', 'Proto Recv-Q Send-Q Local Address           '
+                       'Foreign Address         State       PID/Program name'),
+        ]
+        taken = {(s.proto, s.local) for s in self.sockets}
+        pool = [s for s in _NOISE_SOCKETS if (s.proto, s.local) not in taken]
+        r.shuffle(pool)
+        rows = list(self.sockets) + pool[:r.randint(*self.noise)]
+        rows.sort(key=lambda s: (s.proto, s.local.rsplit(':', 1)[-1].zfill(6)))
+        for s in rows:
+            out.append(Line(
+                _slug('n', f'{s.proto}{s.local}'),
+                f'{s.proto:<5} {0:>6} {0:>6} {s.local:<23} {s.foreign:<23} '
+                f'{s.state:<11} {s.program}',
+                s.kind))
+        return tuple(out)
+
+
+# --------------------------------------------------------------------------
+# Directory user objects
+# --------------------------------------------------------------------------
+
+@dataclass(frozen=True, slots=True)
+class DirUser:
+    name: str
+    description: str = ''
+    kind: str = 'noise'
+    flags: str = ''
+
+
+class LdapUsers(Fixture):
+    """A directory user dump, one attribute block per account.
+
+    The classic finding here is a password in a `description`, so the noise
+    accounts carry the kind of descriptions real directories actually contain:
+    ticket numbers, owners, dates, and nothing.
+    """
+
+    _FILLER = (
+        'Managed by IT', 'Created by migration 2019', 'Do not delete',
+        'Service account', 'Owner: helpdesk', 'REQ-40114',
+        'Temporary account', '', '', 'Contractor - review annually',
+    )
+
+    def __init__(self, domain: str, users: tuple[DirUser, ...],
+                 noise: tuple[int, int] = (5, 9)) -> None:
+        self.domain = domain
+        self.users = users
+        self.noise = noise
+
+    _NAMES = ('jbrown', 'asmith', 'mpatel', 'rgarcia', 'lnguyen', 'kwilson',
+              'dkim', 'tmurphy', 'svc_iis', 'svc_sql', 'backupsvc', 'helpdesk')
+
+    def build(self, seed: int) -> tuple[Line, ...]:
+        r = _rng(seed)
+        taken = {u.name for u in self.users}
+        pool = [n for n in self._NAMES if n not in taken]
+        r.shuffle(pool)
+        extra = [DirUser(n, r.choice(self._FILLER))
+                 for n in pool[:r.randint(*self.noise)]]
+        users = list(self.users) + extra
+        r.shuffle(users)
+
+        out = [Line('h1', f'# extended LDIF for {self.domain}'), Line('h2', '')]
+        for u in users:
+            out.append(Line(_slug('u', u.name), f'sAMAccountName: {u.name}'))
+            out.append(Line(_slug('d', u.name + u.description),
+                            f'description: {u.description}', u.kind))
+            if u.flags:
+                out.append(Line(_slug('f', u.name), f'userAccountControl: {u.flags}',
+                                u.kind if not u.description else 'noise'))
+            out.append(Line(_slug('b', u.name), ''))
+        return tuple(out)
+
+
+# --------------------------------------------------------------------------
+# An HTTP response
+# --------------------------------------------------------------------------
+
+class HttpResponse(Fixture):
+    """Response headers followed by page source.
+
+    Header order is shuffled below the status line, because servers and
+    proxies genuinely reorder them and a student who learns "the interesting
+    header is fourth" has learned the fixture rather than the protocol.
+    """
+
+    _FILLER = (
+        'Connection: close', 'Accept-Ranges: bytes', 'Vary: Accept-Encoding',
+        'Cache-Control: no-store, no-cache, must-revalidate',
+        'Pragma: no-cache', 'Content-Type: text/html; charset=UTF-8',
+        'Transfer-Encoding: chunked', 'Expires: Thu, 19 Nov 1981 08:52:00 GMT',
+    )
+
+    def __init__(self, status: str, headers: tuple[Note, ...],
+                 source: tuple[Note, ...] = (), noise: tuple[int, int] = (3, 5),
+                 host: str = '') -> None:
+        self.status = status
+        self.headers = headers
+        self.source = source
+        self.noise = noise
+        self.host = host
+
+    def build(self, seed: int) -> tuple[Line, ...]:
+        r = _rng(seed)
+        out = [Line('h0', self.status)]
+        rows = list(self.headers)
+        pool = [f for f in self._FILLER
+                if not any(f.split(':')[0] == h.text.split(':')[0]
+                           for h in self.headers)]
+        r.shuffle(pool)
+        rows += [Note(f) for f in pool[:r.randint(*self.noise)]]
+        rows.append(Note(f'Date: Wed, {r.randint(10, 28)} Aug 2026 '
+                         f'{r.randint(0, 23):02d}:{r.randint(0, 59):02d}:00 GMT'))
+        r.shuffle(rows)
+        for h in rows:
+            out.append(Line(_slug('h', h.text), h.text, h.kind))
+        if self.source:
+            out.append(Line('sep', ''))
+            for src in self.source:
+                out.append(Line(_slug('s', src.text), src.text, src.kind))
+        return tuple(out)

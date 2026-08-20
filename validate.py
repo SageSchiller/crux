@@ -18,9 +18,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from crux import render as R
-from crux.config import EXIT_CHORD, TIERS, TRACKS
+from crux.config import EXIT_CHORD, TIERS, TRACKS, vault_dir
 from crux.loader import load
 from crux.model import LINE_KINDS, MarkBody, Scenario, StubBody, roles
+from crux.scoring import DECOY_WEIGHT, score_marks
 from crux.screens import Screen
 from crux.version import VERSION
 
@@ -128,9 +129,35 @@ def check_mark_body(s: Scenario) -> None:
             err(f'{s.id}: the key moves with the seed. At seed {seed} the '
                 f'leads are {sorted(leads)}, at seed {PROBE_SEEDS[0]} they '
                 f'were {sorted(first_leads)}')
-        if not leads and not decoys:
-            warn(f'{s.id}: a no-lead scenario with no decoys is not a test of '
-                 'restraint, it is a blank screen')
+        if not decoys:
+            warn(f'{s.id}: no decoys. Nothing on this screen is authored to '
+                 'tempt, so chasing costs the same as a stray mark and the '
+                 'wrong answers name lines the scorer does not charge for')
+
+
+def check_provenance(reg) -> None:
+    """Every cited source must be a real file (crux D11).
+
+    This is the check that pays for itself. Three of the first eleven
+    scenarios cited writeups that did not exist, because the paths were
+    written from memory of the corpus rather than read out of it, and one of
+    them was wrong in a way that mattered: the box it should have cited
+    records that the directory returned **403**, not the 200 the scenario had
+    been authored around. A citation nobody checks is a citation that drifts.
+
+    Skips silently where the vault is not reachable, because content must run
+    on a machine that has never seen it.
+    """
+    root = vault_dir()
+    if root is None:
+        print('  note  vault not reachable, provenance not audited '
+              '(set $CRUX_VAULT or write .crux-vault)')
+        return
+    for s in reg.scenarios:
+        if not s.source:
+            continue
+        if not (root / s.source).exists():
+            err(f'{s.id}: source does not exist: {s.source}')
 
 
 def check_scaffolding(reg) -> None:
@@ -143,6 +170,30 @@ def check_scaffolding(reg) -> None:
             for s in smoke:
                 warn(f'{s.id}: Phase 0 scaffolding still present alongside '
                      f'{len(real)} real scenario(s); delete it')
+
+
+def check_content_ascii(reg) -> None:
+    """No fixture line may carry a non-ASCII character.
+
+    The glyph ladder has an ASCII rung for terminals that cannot render
+    anything else, and a screen is only as portable as the text on it. Real
+    enumeration tools do draw box characters, and the answer is to author the
+    ASCII form they degrade to rather than to lower the rung: the substance
+    being drilled is never the border.
+    """
+    for s in reg.scenarios:
+        if not isinstance(s.body, MarkBody):
+            continue
+        for ln in s.body.canonical():
+            if not ln.text.isascii():
+                bad = [c for c in ln.text if not c.isascii()]
+                err(f'{s.id}: line {ln.id!r} carries non-ASCII {bad!r}, which '
+                    'would leak into the ASCII glyph rung')
+        for a in s.body.actions:
+            if not (a.text + a.why).isascii():
+                err(f'{s.id}: an action carries non-ASCII')
+        if not s.body.debrief.isascii():
+            err(f'{s.id}: the debrief carries non-ASCII')
 
 
 def check_ascii_rung() -> None:
@@ -189,13 +240,69 @@ def check_screen_contract() -> None:
         err(f'only {found} screens found; the contract check is not reaching them')
 
 
+#: Marking everything must lose, and it must lose everywhere. A screen small
+#: enough that greedy marking still scores respectably cannot teach restraint,
+#: and the fix is always more realistic output rather than a harsher scorer.
+GREEDY_CEILING = 35.0
+
+
+def score_profile(reg, verbose: bool) -> None:
+    """What canonical play patterns score, per scenario.
+
+    This exists because crux D8 is a claim about numbers, and a claim about
+    numbers that nobody recomputes becomes false the moment content is added.
+    It is also how `DECOY_WEIGHT` stopped being a guess.
+
+    It found a content bug on its first run: the `netstat` fixtures were nine
+    lines long, so marking every line scored 31 rather than the 5 it scores on
+    a realistic screen. The scorer was fine; the output was too short to be
+    wrong on.
+    """
+    if verbose:
+        print(f'\n  score profile (DECOY_WEIGHT={DECOY_WEIGHT})')
+        print(f'  {"scenario":<26}{"lines":>6}{"L":>3}{"D":>3}'
+              f'{"perfect":>9}{"miss1":>7}{"decoy1":>8}{"greedy":>8}')
+    for sc in reg.scenarios:
+        if not isinstance(sc.body, MarkBody):
+            continue
+        lines = sc.body.build(0)
+        leads, decoys = roles(lines)
+        allids = {ln.id for ln in lines}
+        mark = lambda m: score_marks(leads, decoys, m).marks
+
+        greedy = mark(allids)
+        if leads:
+            perfect = mark(leads)
+            miss1 = mark(set(sorted(leads)[1:]))
+            decoy1 = mark(leads | set(sorted(decoys)[:1])) if decoys else None
+        else:
+            perfect = mark(set())
+            miss1 = None
+            decoy1 = mark(set(sorted(decoys)[:1])) if decoys else None
+
+        if perfect < 100.0:
+            err(f'{sc.id}: a perfect answer scores {perfect}, not 100')
+        if greedy > GREEDY_CEILING:
+            warn(f'{sc.id}: marking every line scores {greedy:.0f}, over the '
+                 f'{GREEDY_CEILING:.0f} ceiling. The screen is too short to be '
+                 'wrong on; add realistic output rather than harshening the '
+                 'scorer')
+        if verbose:
+            f = lambda v: f'{v:.0f}' if v is not None else '-'
+            print(f'  {sc.id:<26}{len(lines):>6}{len(leads):>3}{len(decoys):>3}'
+                  f'{perfect:>9.0f}{f(miss1):>7}{f(decoy1):>8}{greedy:>8.0f}')
+
+
 def main() -> int:
     reg = load()
     check_registry(reg)
     for s in reg.scenarios:
         check_scenario(s)
+    check_provenance(reg)
     check_scaffolding(reg)
+    score_profile(reg, verbose='--scores' in sys.argv)
     check_ascii_rung()
+    check_content_ascii(reg)
     check_exit_chord(reg)
     check_screen_contract()
 

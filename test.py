@@ -274,13 +274,42 @@ def test_fixtures() -> None:
                                     if l.id in leads))
             if len(positions) > 1:
                 moved += 1
-    ok(moved >= 6,
+    ok(moved >= 12,
        f'only {moved} fixtures move their lead between seeds; crux D10 wants '
        'a screen that cannot be beaten by remembering a row number')
 
     no_lead = [sc for sc in sifts if sc.body.no_lead]
-    ok(len(no_lead) >= 2,
+    ok(len(no_lead) >= 4,
        f'{len(no_lead)} no-lead scenarios; crux D9 needs the possibility live')
+    ok(len(no_lead) < len(sifts) / 2,
+       'no-lead scenarios must stay the exception, or the app trains the '
+       'opposite reflex: mark nothing and always be half right')
+
+
+def test_scoring_over_real_content() -> None:
+    """crux D8 is a claim about numbers, so recompute it over every screen."""
+    from crux.scoring import DECOY_WEIGHT
+    reg = load()
+    for sc in reg.track('sift').scenarios:
+        if not isinstance(sc.body, MarkBody):
+            continue
+        lines = sc.body.build(0)
+        leads, decoys = roles(lines)
+        allids = {ln.id for ln in lines}
+        mark = lambda m: score_marks(leads, decoys, m).marks
+
+        eq(mark(leads if leads else set()), 100.0,
+           f'{sc.id}: the correct answer scores 100')
+        greedy = mark(allids)
+        ok(greedy <= 35.0,
+           f'{sc.id}: marking every line scores {greedy:.0f}, which is not '
+           'losing badly enough for crux D8')
+        ok(bool(decoys), f'{sc.id}: has at least one line authored to tempt')
+        if len(leads) > 1 and decoys:
+            miss1 = mark(set(sorted(leads)[1:]))
+            decoy1 = mark(leads | set(sorted(decoys)[:1]))
+            eq(round(miss1, 1), round(decoy1, 1),
+               f'{sc.id}: missing a lead costs what chasing a decoy costs')
 
 
 def _screens(session):
@@ -331,6 +360,36 @@ def test_screens_render() -> None:
                     plain = ''.join(r.plain() for r in rows)
                     ok(plain.isascii(),
                        f'{name}: non-ASCII leaked into the ASCII rung')
+
+
+def test_every_scenario_renders() -> None:
+    """Every sift screen, at the narrowest terminal and the poorest rung.
+
+    `_screens` instantiates two scenarios, which was fine when there were
+    eleven and is not fine at twenty-six: content is where non-ASCII and
+    overlong lines actually get introduced, and a render test that only sees
+    two of them is testing the harness rather than the content.
+    """
+    session = Session.open(clock=FakeClock(), read_only=True, seed_override=0)
+    from crux.screens.mark import MarkScreen
+    poor = R.Caps(R.ColorLevel.NONE, R.GlyphLevel.ASCII,
+                  next(iter(PALETTES.values())), MIN_COLS, MIN_ROWS)
+    rich = R.Caps(R.ColorLevel.TRUE, R.GlyphLevel.UNICODE,
+                  next(iter(PALETTES.values())), 120, 45)
+    for sc in session.registry.track('sift').scenarios:
+        for caps in (poor, rich):
+            scr = MarkScreen(session, sc, seed=0)
+            rows = scr.render(caps)
+            ok(bool(rows), f'{sc.id}: renders')
+            for r in rows:
+                ok(r.width() <= caps.cols,
+                   f'{sc.id}: line of {r.width()} exceeds {caps.cols}')
+            if caps is poor:
+                plain = ''.join(r.plain() for r in rows)
+                ok(plain.isascii(),
+                   f'{sc.id}: non-ASCII leaked into the ASCII rung')
+                ok(any(h[1] == 'submit' for h in scr.hints(caps)),
+                   f'{sc.id}: offers a way to submit')
 
 
 def test_screen_contract() -> None:
@@ -485,6 +544,7 @@ def test_panning() -> None:
 def main() -> int:
     for fn in (test_keys, test_render_primitives, test_scoring, test_clock,
                test_state, test_model_guards, test_loader, test_fixtures,
+               test_scoring_over_real_content, test_every_scenario_renders,
                test_screens_render, test_screen_contract, test_walkthrough,
                test_stub_records_nothing, test_session_persists, test_panning):
         fn()

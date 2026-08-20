@@ -61,3 +61,32 @@ def data_dir() -> Path:
 
 def state_path() -> Path:
     return data_dir() / 'state.json'
+
+
+#: Where the PEN-200 writeups live, for the provenance audit of crux D11.
+#: Never read by the app itself: content carries its own text, and a scenario
+#: must run on a machine that has never seen the vault. Only `validate.py`
+#: looks, and only to check that a cited path is a real file.
+VAULT_ENV = 'CRUX_VAULT'
+VAULT_FILE = '.crux-vault'
+_VAULT_DEFAULT = (
+    Path.home() / 'Documents' / 'Main' / 'Cyber Security Study and Reference'
+    / 'OffSec' / 'Pen-200'
+)
+
+
+def vault_dir() -> Path | None:
+    """The writeup root, or None when it is not reachable from here.
+
+    Three places, in order: `$CRUX_VAULT`, a git-ignored `.crux-vault` file
+    beside the repository holding the path, then the author's own location.
+    None is a normal answer, not an error: on any other machine the audit
+    simply does not run.
+    """
+    raw = os.environ.get(VAULT_ENV)
+    if not raw:
+        marker = Path(__file__).resolve().parent.parent / VAULT_FILE
+        if marker.exists():
+            raw = marker.read_text(encoding='utf-8').strip()
+    candidate = Path(raw).expanduser() if raw else _VAULT_DEFAULT
+    return candidate if candidate.is_dir() else None

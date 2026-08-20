@@ -27,14 +27,20 @@ Python 3, standard library only. No pip, no network, ever.
 
 ## Status
 
-**Phase 1.** The sift track is complete: eleven scenarios across nmap, web
-content discovery and `sudo -l`. The other two tracks say on screen that their
-engines are not written yet. See `CRUX-PLAN.md`, which is the file to read first.
+**Phase 2 complete: the `sift` track is done.** Twenty-six scenarios across
+seven families: port scans, web content discovery, `sudo -l`, SMB shares,
+local enumeration output, listening sockets, and HTTP responses. Six of them
+contain no lead at all, because recognising a screen with nothing on it is
+part of the skill.
+
+`salvage` and `conduit` say on screen that their engines are not written yet.
+See `CRUX-PLAN.md`, which is the file to read first.
 
 ## After any change
 
 ```bash
 python3 validate.py    # structure and content invariants; authoritative on counts
+python3 validate.py --scores   # what canonical play patterns score, per scenario
 python3 test.py        # behaviour; must be green
 python3 test-tty.py    # optional third suite, drives the real app in a real pty
 ```
