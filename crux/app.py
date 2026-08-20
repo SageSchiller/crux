@@ -1,0 +1,180 @@
+"""Entry point: argument parsing, the screen stack, and the main loop.
+
+The loop is deliberately dull. It renders the top screen, waits for a key,
+hands the key to that screen, and does what the returned action says. Every
+interesting decision lives in a screen or in `scoring.py`, which is what keeps
+this file from becoming the place where behaviour hides.
+
+**Every exit path closes every stacked screen.** A screen cannot see the `q`
+that quits the app from three levels down, and from Phase 3 the things screens
+hold are mock services and network namespaces rather than just memory. Leaking
+one of those is worse than a wedged terminal, because the next run inherits it.
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+from . import render as R
+from . import term as T
+from .clock import RealClock, fmt
+from .config import APP_NAME, APP_TITLE, MIN_COLS, MIN_ROWS, TRACKS
+from .loader import load
+from .session import Session
+from .state import State
+from .version import VERSION
+from . import screens as S
+from .screens.help import HelpScreen
+from .screens.home import HomeScreen
+
+
+def _parse_args(argv: list[str]) -> argparse.Namespace:
+    ap = argparse.ArgumentParser(prog=APP_NAME, add_help=True,
+                                 description='Drills for the judgement parts '
+                                             'of an engagement.')
+    ap.add_argument('--version', action='store_true', help='print version and exit')
+    ap.add_argument('--theme', default=None,
+                    help='cyberpunk-neon (default), neutral, or ansi')
+    ap.add_argument('--ascii', action='store_true',
+                    help='force the ASCII glyph set')
+    ap.add_argument('--doctor', action='store_true',
+                    help='report what this terminal and machine support')
+    ap.add_argument('--export', metavar='PATH',
+                    help='write attempt history to PATH and exit')
+    ap.add_argument('--import', dest='import_', metavar='PATH',
+                    help='merge attempt history from PATH and exit')
+    ap.add_argument('--no-alt-screen', action='store_true',
+                    help='do not use the alternate screen buffer')
+    return ap.parse_args(argv)
+
+
+def _doctor() -> int:
+    """What this machine supports, said plainly. No scenario is run."""
+    import shutil
+    caps = R.detect_caps()
+    print(f'{APP_TITLE} {VERSION}')
+    print(f'  python        {sys.version.split()[0]}')
+    print(f'  tty           {T.is_tty()}')
+    cols, rows = T.size()
+    print(f'  size          {cols}x{rows}'
+          f'{"  (below the " + str(MIN_COLS) + "x" + str(MIN_ROWS) + " minimum)" if T.too_small() else ""}')
+    print(f'  colour        {caps.color.name}')
+    print(f'  glyphs        {caps.glyphs.name}')
+    print(f'  kitty keys    {T.kitty_supported()}')
+    reg = load()
+    for name in TRACKS:
+        tr = reg.track(name)
+        print(f'  track {name:<9}{len(tr.scenarios)} scenario(s)'
+              f'{"" if tr.ready else "   engine not built yet"}')
+    for e in reg.errors:
+        print(f'  LOAD ERROR    {e}')
+    print('  conduit needs unprivileged user namespaces plus:')
+    for tool in ('ip', 'unshare', 'nsenter', 'socat', 'ssh', 'sshd',
+                 'proxychains4', 'chisel'):
+        # sshd is not on a normal PATH, and conduit runs it unprivileged on a
+        # high port rather than touching the system service.
+        where = shutil.which(tool)
+        if where is None and tool == 'sshd':
+            where = next((c for c in ('/usr/sbin/sshd', '/usr/bin/sshd')
+                          if Path(c).exists()), None)
+        print(f'    {tool:<14}{where or "MISSING"}')
+    st = State.load()
+    print(f'  history       {len(st.attempts)} attempt(s), '
+          f'{fmt(st.time_on_task())} on task')
+    if st.damaged:
+        print(f'  HISTORY       {st.damaged}')
+    return 0
+
+
+def _export(path: str) -> int:
+    st = State.load()
+    Path(path).write_text(st.export_json(), encoding='utf-8')
+    print(f'wrote {len(st.attempts)} attempt(s) to {path}')
+    return 0
+
+
+def _import(path: str) -> int:
+    incoming = State.load(Path(path))
+    if incoming.damaged:
+        print(f'could not import: {incoming.damaged}', file=sys.stderr)
+        return 1
+    mine = State.load()
+    added = mine.merge(incoming)
+    mine.save()
+    print(f'merged {added} new attempt(s); history now {len(mine.attempts)}')
+    return 0
+
+
+def run(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv if argv is not None else sys.argv[1:])
+    if args.version:
+        print(f'{APP_NAME} {VERSION}')
+        return 0
+    if args.doctor:
+        return _doctor()
+    if args.export:
+        return _export(args.export)
+    if args.import_:
+        return _import(args.import_)
+
+    if not T.is_tty():
+        print(f'{APP_NAME}: needs an interactive terminal. '
+              f'Try `{APP_NAME} --doctor`.', file=sys.stderr)
+        return 2
+
+    S.set_help_factory(HelpScreen)
+    session = Session.open(clock=RealClock())
+    stack: list[S.Screen] = [HomeScreen(session)]
+
+    with T.managed(use_alt_screen=not args.no_alt_screen) as tty:
+        try:
+            while stack:
+                cols, rows = T.size()
+                caps = R.detect_caps(theme=args.theme, ascii_only=args.ascii,
+                                     cols=cols, rows=rows)
+                screen = stack[-1]
+                if T.too_small():
+                    out = _too_small(caps)
+                else:
+                    out = R.render_lines(caps, screen.render(caps))
+                tty.write(T.CLEAR + out)
+
+                keys = tty.read_keys(timeout=0.5)
+                if not keys:
+                    continue
+                for key in keys:
+                    action = screen.handle(key)
+                    if action.kind == 'stay':
+                        continue
+                    if action.kind == 'push':
+                        stack.append(action.screen)
+                    elif action.kind == 'replace':
+                        stack.pop().close()
+                        stack.append(action.screen)
+                    elif action.kind == 'pop':
+                        if len(stack) > 1:
+                            stack.pop().close()
+                    elif action.kind == 'root':
+                        while len(stack) > 1:
+                            stack.pop().close()
+                    elif action.kind == 'quit':
+                        while stack:
+                            stack.pop().close()
+                    break
+        finally:
+            for s in stack:
+                s.close()
+    return 0
+
+
+def _too_small(caps: R.Caps) -> str:
+    """A terminal below the documented minimum still gets a readable message."""
+    cols, rows = T.size()
+    lines = [
+        R.line(f'{APP_TITLE} needs {MIN_COLS}x{MIN_ROWS}.', caps.palette.warn),
+        R.line(f'This terminal is {cols}x{rows}.', caps.palette.muted),
+        R.line('Resize, or press q to quit.', caps.palette.dim),
+    ]
+    return R.render_lines(caps, lines)
