@@ -27,10 +27,13 @@ Python 3, standard library only. No pip, no network, ever.
 
 ## Status
 
-**Phase 3 complete.** `sift` is done: twenty-six scenarios across seven
-families, six of which contain no lead at all. `salvage` runs: five broken
-proof-of-concepts, four against an instrumented HTTP service and one against a
-raw TCP daemon, all of them scored by crux actually being the target.
+**Phase 4 complete: `sift` and `salvage` are both done.** Twenty-six sift
+scenarios across seven families, six of which contain no lead at all. Ten
+salvage scenarios, one per defect class, scored by crux actually being the
+target the exploit is aimed at.
+
+The last salvage scenario is the only one in crux you can fail by pressing a
+key.
 
 `conduit` says on screen that its engine is not written yet. See
 `CRUX-PLAN.md`, which is the file to read first.

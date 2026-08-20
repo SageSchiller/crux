@@ -11,16 +11,19 @@ from ..clock import fmt
 from ..model import SalvageBody, Scenario
 from ..render import Caps, Text, line, wrap_rich
 from ..session import Session
-from . import POP, Screen
+from . import POP, ScrollScreen
 
 
-class RunResultScreen(Screen):
+class RunResultScreen(ScrollScreen):
     def __init__(self, session: Session, scenario: Scenario, score,
-                 record) -> None:
+                 record, tripped: bool = False, sink=None) -> None:
+        super().__init__()
         self.session = session
         self.scenario = scenario
         self.score = score
         self.record = record
+        self.tripped = tripped
+        self.sink = sink
         self.body_data: SalvageBody = scenario.body
 
     @property
@@ -31,7 +34,7 @@ class RunResultScreen(Screen):
     def status(self) -> str:
         return 'landed' if self.score.landed else 'did not land'
 
-    def body(self, caps: Caps) -> list[Text]:
+    def content(self, caps: Caps) -> list[Text]:
         p = caps.palette
         s = self.score
         rows: list[Text] = []
@@ -43,6 +46,25 @@ class RunResultScreen(Screen):
         head.add(f'   {fmt(s.elapsed)}', p.dim)
         rows.append(head)
         rows.append(Text())
+
+        if self.tripped:
+            rows.extend(wrap_rich(
+                caps,
+                '**You ran it without reading it.** Before it touched the '
+                'target at all, this script sent a request to an address '
+                'written into it. crux owns that address, so nothing left '
+                'this machine and nothing of yours was in it. On a real '
+                'engagement neither of those would be true.',
+                caps.cols - 6, '  ', p.err, p.accent))
+            if self.sink is not None and self.sink.record.requests:
+                got = self.sink.record.requests[0]
+                rows.append(Text())
+                rows.append(line(f'  it sent  {got.method} {got.target}',
+                                 p.warn))
+                body = got.text().strip()
+                if body:
+                    rows.append(line(f'  body     {body[:60]}', p.warn))
+            rows.append(Text())
 
         best = self.record.closest()
         met = set(self.record.met(best)) if best else set()
@@ -57,7 +79,7 @@ class RunResultScreen(Screen):
             rows.append(t)
         rows.append(Text())
 
-        if s.read_first is False:
+        if s.read_first is False and not self.tripped:
             rows.extend(wrap_rich(
                 caps,
                 '**You ran it before you opened it.** Nothing came of it this '
@@ -76,7 +98,9 @@ class RunResultScreen(Screen):
         return rows
 
     def hints(self, caps: Caps) -> list[tuple[str, str]]:
-        return [('esc', 'back'), ('H', 'home'), ('q', 'quit'), ('?', 'help')]
+        return (self.scroll_hints(caps)
+                + [('esc', 'back'), ('H', 'home'),
+                   ('q', 'quit'), ('?', 'help')])
 
     def handle(self, key):
         if key.name == 'RET':

@@ -475,7 +475,12 @@ def test_salvage_content() -> None:
     reg = load()
     salv = [s for s in reg.track('salvage').scenarios
             if isinstance(s.body, SalvageBody)]
-    ok(len(salv) >= 5, f'{len(salv)} salvage scenarios; the plan wants 5')
+    ok(len(salv) >= 10,
+       f'{len(salv)} salvage scenarios; the plan wants all ten defect classes')
+    ok(any(sc.body.trap for sc in salv),
+       'the crux D19 capstone is present')
+    ok(any(sc.body.framing == 'length' for sc in salv),
+       'the length-framed target is exercised by real content')
     kinds = {s.body.kind for s in salv}
     ok('tcp' in kinds and 'http' in kinds,
        'both mock targets are exercised by real content, not only by tests')
@@ -542,6 +547,138 @@ def test_salvage_screen() -> None:
         scr.close()
         scr.close()
     ok(True, 'closing the salvage screen twice is safe')
+
+
+def test_length_framing() -> None:
+    """A frame whose header lies gets truncated, which is the whole defect."""
+    import socket
+    import struct
+
+    from crux.targets._hits import Requirement
+    from crux.targets.mocktcp import MockTcp
+
+    reqs = (Requirement('whole command', 'raw', 'GO;id;#', hint='truncated'),)
+    with MockTcp(reqs, framing='length', banner=b'framed\n') as t:
+        body = b'GO;id;#'
+        for label, delta, want in (('short by one', -1, False),
+                                   ('exact', 0, True)):
+            s1 = socket.create_connection(('127.0.0.1', t.port), timeout=5)
+            s1.recv(64)
+            s1.sendall(struct.pack('>I', len(body) + delta) + body)
+            reply = s1.recv(64)
+            s1.close()
+            eq(b'CRUX-LANDED' in reply, want, f'framed send: {label}')
+        ok(t.verdict()[0], 'the exact frame landed')
+        got = t.record.requests[0].raw
+        ok(got == body[:-1],
+           'a short header truncates the recorded body, it does not just '
+           'mis-score it')
+
+
+def test_hostile_capstone() -> None:
+    """crux D19: you can fail this one by pressing a key.
+
+    The point of the scenario is that the broken script **works**. Anything
+    that made it fail at the exploit as well would let a student conclude the
+    lesson is "broken scripts are broken" rather than "working scripts can
+    still be hostile", so that is asserted here explicitly.
+    """
+    from crux.screens.salvage import SalvageScreen
+    from crux.screens.runresult import RunResultScreen
+
+    caps = all_caps()[0]
+
+    # 1. Run it unread: the exploit lands and the beacon fires anyway.
+    session = Session.open(clock=FakeClock(), read_only=True)
+    scr = SalvageScreen(session, session.registry.by_id('salvage-hostile'))
+    try:
+        ok(scr.sink is not None, 'the trap sink was opened')
+        ok(scr.sink.url != scr.url, 'the sink is a different service')
+        eq(scr.tripped, False, 'nothing has been sent yet')
+        action = scr._run()
+        ok(scr.tripped, 'running it unread trips the trap')
+        ok(scr.target.verdict()[0],
+           'and the exploit itself worked, which is why anyone would run it')
+        eq(action.kind, 'replace', 'tripping the trap ends the scenario')
+        res = action.screen
+        ok(isinstance(res, RunResultScreen), 'it goes to the run result')
+        ok(not res.score.landed,
+           'a tripped trap is not a pass however well the exploit worked')
+        eq(res.score.total_score, 0.0, 'and it scores zero')
+        eq(res.tripped, True, 'the result screen knows')
+        shown = ''.join(r.plain() for r in res.render(caps))
+        ok('without reading it' in shown, 'and says so plainly')
+        ok('/feed' in shown, 'and shows what the beacon sent')
+        eq(session.state.attempts[0].read_first, False,
+           'read_first recorded the failure (crux D19)')
+    finally:
+        scr.close()
+
+    # 2. Read it, remove the beacon, run it: lands clean.
+    session2 = Session.open(clock=FakeClock(), read_only=True)
+    sc = session2.registry.by_id('salvage-hostile')
+    scr2 = SalvageScreen(session2, sc)
+    try:
+        scr2.opened = True
+        scr2.path.write_text(sc.body.render(sc.body.solution, scr2.url, 0,
+                                            scr2.sink.url))
+        action = scr2._run()
+        ok(not scr2.tripped, 'the fixed script never contacts the sink')
+        res = action.screen
+        ok(res.score.landed, 'and it lands')
+        eq(res.score.total_score, 100.0, 'for full marks')
+        eq(session2.state.attempts[0].read_first, True,
+           'opening it first is recorded too')
+    finally:
+        scr2.close()
+
+
+def test_result_screens_scroll() -> None:
+    """The debrief must be reachable on a minimum-size terminal.
+
+    The height backstop truncates a body that does not fit, which is right as
+    a backstop and wrong as the outcome here: the part that fell off the
+    bottom of a result screen was the debrief, so on a 24-row terminal a
+    student got the score and silently lost the explanation.
+    """
+    from crux.screens.mark import MarkScreen
+    from crux.screens.result import ResultScreen
+
+    session = Session.open(clock=FakeClock(), read_only=True, seed_override=0)
+    small = R.Caps(R.ColorLevel.NONE, R.GlyphLevel.ASCII,
+                   next(iter(PALETTES.values())), MIN_COLS, MIN_ROWS)
+
+    # A greedy run, because that is the result that is actually long: every
+    # chased line is listed, and the debrief sits under all of them. A perfect
+    # score has nothing to list and fits in 24 rows, which is why the first
+    # version of this test asserted an overflow that was not there.
+    sc = session.registry.by_id('sift-nmap-dc')
+    mark = MarkScreen(session, sc, seed=0)
+    everything = {ln.id for ln in mark.lines}
+    score = score_marks(mark.leads, mark.decoys, everything,
+                        action_ok=False, has_action=True, elapsed=30.0)
+    res = ResultScreen(session, sc, score, mark.lines,
+                       chose=sc.body.actions[0])
+
+    ok(res.scrollable(small), 'this result really does overflow 24 rows')
+    ok(any(h[1] == 'scroll' for h in res.hints(small)),
+       'and the footer offers scrolling only because it does')
+
+    tail = sc.body.debrief.split()[-4:]
+    seen = lambda: ' '.join(''.join(r.plain() for r in res.render(small)).split())
+    ok(' '.join(tail) not in seen(), 'the end of the debrief starts off-screen')
+    for _ in range(60):
+        res.handle(K.parse('Down'))
+    ok(' '.join(tail) in seen(), 'scrolling reaches the end of the debrief')
+    for _ in range(200):
+        res.handle(K.parse('Up'))
+    eq(res.scroll, 0, 'scrolling back stops at the top')
+
+    big = R.Caps(R.ColorLevel.NONE, R.GlyphLevel.ASCII,
+                 next(iter(PALETTES.values())), MIN_COLS, 80)
+    ok(not res.scrollable(big), 'a tall terminal needs no scrolling')
+    ok(not any(h[1] == 'scroll' for h in res.hints(big)),
+       'and is not offered a key that would do nothing')
 
 
 def test_screen_contract() -> None:
@@ -698,6 +835,8 @@ def main() -> int:
                test_state, test_model_guards, test_loader, test_fixtures,
                test_scoring_over_real_content, test_every_scenario_renders,
                test_mock_targets, test_salvage_content, test_salvage_screen,
+               test_length_framing, test_hostile_capstone,
+               test_result_screens_scroll,
                test_screens_render, test_screen_contract, test_walkthrough,
                test_stub_records_nothing, test_session_persists, test_panning):
         fn()

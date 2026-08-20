@@ -15,12 +15,13 @@ from ..model import MarkBody, Scenario
 from ..render import Caps, Text, bar, line, wrap_rich
 from ..scoring import Score
 from ..session import Session
-from . import ROOT, Screen, POP
+from . import POP, ScrollScreen
 
 
-class ResultScreen(Screen):
+class ResultScreen(ScrollScreen):
     def __init__(self, session: Session, scenario: Scenario, score: Score,
                  lines, chose=None) -> None:
+        super().__init__()
         self.session = session
         self.scenario = scenario
         self.score = score
@@ -45,7 +46,7 @@ class ResultScreen(Screen):
                 return ln.text or '(blank line)'
         return line_id
 
-    def body(self, caps: Caps) -> list[Text]:
+    def content(self, caps: Caps) -> list[Text]:
         p = caps.palette
         s = self.score
         rows: list[Text] = []
@@ -101,7 +102,9 @@ class ResultScreen(Screen):
         return rows
 
     def hints(self, caps: Caps) -> list[tuple[str, str]]:
-        return [('esc', 'back'), ('H', 'home'), ('q', 'quit'), ('?', 'help')]
+        return (self.scroll_hints(caps)
+                + [('esc', 'back'), ('H', 'home'),
+                   ('q', 'quit'), ('?', 'help')])
 
     def handle(self, key):
         if key.name == 'RET':

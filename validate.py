@@ -91,6 +91,23 @@ def check_salvage_body(s: Scenario) -> None:
              'say what was wrong with the original')
     if b.broken == b.solution:
         err(f'{s.id}: the broken script and the solution are identical')
+    if b.trap:
+        if '{{SINK}}' not in b.broken:
+            err(f'{s.id}: has a trap but the script never contacts it')
+        # Whether the solution still *fires* the beacon is decided by running
+        # it, in `check_salvage_runs`, and not by looking for a call in the
+        # text. The first version of this check searched for the function name
+        # and failed the solution because it still defines the function it
+        # never calls, which is a perfectly legitimate minimal fix.
+    for mod in b.needs_absent:
+        try:
+            __import__(mod)
+        except ImportError:
+            continue
+        err(f'{s.id}: needs {mod!r} to be absent for its defect to bite, and '
+            f'it is importable here. The broken script would work and the '
+            f'scenario would teach nothing. Either uninstall it for this '
+            f'check or re-author the scenario')
     if '{{PORT}}' in b.broken and b.kind == 'http':
         warn(f'{s.id}: an http scenario substitutes PORT rather than URL')
     for q in b.requirements:
@@ -127,29 +144,56 @@ def check_salvage_runs(reg) -> None:
             continue
         for label, src, want in (('solution', b.solution, True),
                                  ('broken', b.broken, False)):
-            target = (MockTcp(b.requirements, banner=b.banner) if b.kind == 'tcp'
+            target = (MockTcp(b.requirements, banner=b.banner,
+                              framing=b.framing) if b.kind == 'tcp'
                       else MockHttp(b.requirements, route=b.route,
                                     reject_code=b.reject_code,
                                     reject_message=b.reject_message))
+            sink = MockHttp(b.trap, route='/feed') if b.trap else None
             with target:
-                work = Path(tempfile.mkdtemp(prefix='crux-validate-'))
-                path = work / b.filename
-                path.write_text(b.render(src, getattr(target, 'url', ''),
-                                         target.port), encoding='utf-8')
+                if sink is not None:
+                    sink.start()
                 try:
-                    subprocess.run([sys.executable, str(path)], cwd=str(work),
-                                   capture_output=True, timeout=30)
-                except subprocess.TimeoutExpired:
-                    err(f'{s.id}: the {label} script did not finish in 30s')
-                    continue
-                landed, detail, met = target.verdict()
-                if landed and not want:
-                    err(f'{s.id}: the BROKEN script lands, so the exercise '
-                        'teaches nothing')
-                elif want and not landed:
-                    err(f'{s.id}: the reference solution does not land '
-                        f'({met}/{len(b.requirements)}: {detail}), so the '
-                        'scenario is unsolvable')
+                    work = Path(tempfile.mkdtemp(prefix='crux-validate-'))
+                    path = work / b.filename
+                    path.write_text(
+                        b.render(src, getattr(target, 'url', ''), target.port,
+                                 sink.url if sink is not None else ''),
+                        encoding='utf-8')
+                    try:
+                        subprocess.run([sys.executable, str(path)],
+                                       cwd=str(work), capture_output=True,
+                                       timeout=30)
+                    except subprocess.TimeoutExpired:
+                        err(f'{s.id}: the {label} script did not finish in 30s')
+                        continue
+                    landed, detail, met = target.verdict()
+                    tripped = sink is not None and sink.record.count > 0
+
+                    # A trap scenario is graded on the trap, not on the
+                    # exploit. Its broken script is *supposed* to work, which
+                    # is exactly why anybody would run it unread.
+                    if b.trap:
+                        if want and tripped:
+                            err(f'{s.id}: the reference solution still trips '
+                                'the trap')
+                        if want and not landed:
+                            err(f'{s.id}: the reference solution does not land')
+                        if not want and not tripped:
+                            err(f'{s.id}: the BROKEN script does not trip the '
+                                'trap, so the capstone tests nothing')
+                        continue
+
+                    if landed and not want:
+                        err(f'{s.id}: the BROKEN script lands, so the exercise '
+                            'teaches nothing')
+                    elif want and not landed:
+                        err(f'{s.id}: the reference solution does not land '
+                            f'({met}/{len(b.requirements)}: {detail}), so the '
+                            'scenario is unsolvable')
+                finally:
+                    if sink is not None:
+                        sink.stop()
 
 
 #: Seeds every fixture is built at. Not a round number of consecutive
@@ -417,8 +461,12 @@ def main() -> int:
         if '--fast' in sys.argv:
             print('  note      --fast: reference solutions were NOT run')
         else:
-            print(f'  proven    every solution landed and every broken script '
-                  f'failed, against a real target')
+            traps = sum(1 for s in salv if s.body.trap)
+            print('  proven    every solution landed against a real target; '
+                  'every broken')
+            print(f'            script failed'
+                  + (f', and all {traps} trap script(s) tripped their sink'
+                     if traps else ''))
 
     for w in WARNINGS:
         print(f'  WARN  {w}')

@@ -350,6 +350,73 @@ class ListScreen(Screen):
         return super().handle(key)
 
 
+class ScrollScreen(Screen):
+    """A screen whose content is prose and may be taller than the terminal.
+
+    The base `Screen` truncates a body that does not fit, which is a correct
+    backstop and a bad outcome here: on a result screen the part that falls
+    off the bottom is the debrief, which is the entire teaching payload of the
+    exercise. A student on a 24-row terminal was silently getting the score
+    and losing the explanation.
+
+    Subclasses provide `content()` instead of `body()`.
+    """
+
+    def __init__(self) -> None:
+        self.scroll = 0
+
+    def content(self, caps: Caps) -> list[Text]:
+        raise NotImplementedError
+
+    def _room(self, caps: Caps) -> int:
+        return max(3, caps.rows - 4)
+
+    def body(self, caps: Caps) -> list[Text]:
+        rows = self.content(caps)
+        room = self._room(caps)
+        if len(rows) <= room:
+            self.scroll = 0
+            return rows
+        room -= 1                                  # room for the indicator
+        self.scroll = max(0, min(self.scroll, len(rows) - room))
+        window = rows[self.scroll:self.scroll + room]
+        p = caps.palette
+        below = len(rows) - self.scroll - room
+        marker = Text().add('  ', p.dim)
+        if self.scroll:
+            marker.add(f'{caps.g("up")} {self.scroll} above   ', p.dim)
+        if below:
+            marker.add(f'{caps.g("down")} {below} below', p.dim)
+        return window + [marker]
+
+    def scrollable(self, caps: Caps) -> bool:
+        return len(self.content(caps)) > self._room(caps)
+
+    def handle(self, key: Key) -> Action:
+        name = key.name
+        if name in ('Down', 'j') and not key.ctrl:
+            self.scroll += 1
+            return STAY
+        if name in ('Up', 'k') and not key.ctrl:
+            self.scroll = max(0, self.scroll - 1)
+            return STAY
+        if name == 'PgDn':
+            self.scroll += 10
+            return STAY
+        if name == 'PgUp':
+            self.scroll = max(0, self.scroll - 10)
+            return STAY
+        if name == 'Home':
+            self.scroll = 0
+            return STAY
+        return super().handle(key)
+
+    def scroll_hints(self, caps: Caps) -> list[tuple[str, str]]:
+        if not self.scrollable(caps):
+            return []
+        return [(caps.g('up') + caps.g('down'), 'scroll')]
+
+
 def selector(caps: Caps, selected: bool) -> Text:
     """The cursor marker, sized the same whether or not it is showing."""
     g = caps.g('sel')

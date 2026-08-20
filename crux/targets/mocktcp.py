@@ -24,8 +24,16 @@ READ_TIMEOUT = 2.0
 class MockTcp:
     def __init__(self, requirements: tuple[Requirement, ...],
                  banner: bytes = b'', success_token: str = 'CRUX-LANDED',
-                 reject: bytes = b'ERR unrecognised command\n') -> None:
+                 reject: bytes = b'ERR unrecognised command\n',
+                 framing: str = 'line') -> None:
         self.record = HitRecord(requirements)
+        #: `line` reads newline-terminated commands. `length` reads a
+        #: four-byte big-endian count and then exactly that many bytes, and
+        #: **records only the framed body**. That distinction is the entire
+        #: point of the framed mode: a script that miscounts the length
+        #: delivers a truncated body, and a target that recorded the whole
+        #: stream instead would never notice.
+        self.framing = framing
         self.banner = banner
         self.success_token = success_token
         self.reject = reject
@@ -83,6 +91,53 @@ class MockTcp:
                              daemon=True).start()
 
     def _handle(self, conn: socket.socket) -> None:
+        if self.framing == 'length':
+            return self._handle_framed(conn)
+        return self._handle_lines(conn)
+
+    def _handle_framed(self, conn: socket.socket) -> None:
+        """Four-byte big-endian length, then exactly that many bytes."""
+        with conn:
+            conn.settimeout(READ_TIMEOUT)
+            if self.banner:
+                try:
+                    conn.sendall(self.banner)
+                except OSError:
+                    return
+            try:
+                while True:
+                    head = self._recv_exactly(conn, 4)
+                    if head is None:
+                        return
+                    size = int.from_bytes(head, 'big')
+                    if size <= 0 or size > MAX_PAYLOAD:
+                        return
+                    body = self._recv_exactly(conn, size)
+                    if body is None:
+                        return
+                    req = Request(method='', target='', body=body, raw=body)
+                    self.record.record(req)
+                    ok = len(self.record.met(req)) == len(
+                        self.record.requirements)
+                    conn.sendall(f'OK {self.success_token}\n'.encode()
+                                 if ok else self.reject)
+            except (TimeoutError, OSError):
+                return
+
+    @staticmethod
+    def _recv_exactly(conn: socket.socket, n: int) -> bytes | None:
+        buf = b''
+        while len(buf) < n:
+            try:
+                chunk = conn.recv(n - len(buf))
+            except (TimeoutError, OSError):
+                return None
+            if not chunk:
+                return None
+            buf += chunk
+        return buf
+
+    def _handle_lines(self, conn: socket.socket) -> None:
         """Read lines until the peer stops, answering each one.
 
         **A line at a time, not a single read.** The first version stopped at

@@ -14,11 +14,12 @@ from __future__ import annotations
 from ..model import Scenario, StubBody
 from ..render import Caps, Text, line, wrap_rich
 from ..session import Session
-from . import Screen
+from . import ScrollScreen
 
 
-class StubScreen(Screen):
+class StubScreen(ScrollScreen):
     def __init__(self, session: Session, scenario: Scenario) -> None:
+        super().__init__()
         self.session = session
         self.scenario = scenario
         self.body_data: StubBody = scenario.body
@@ -31,7 +32,7 @@ class StubScreen(Screen):
     def status(self) -> str:
         return self.body_data.phase
 
-    def body(self, caps: Caps) -> list[Text]:
+    def content(self, caps: Caps) -> list[Text]:
         p = caps.palette
         rows = [line(f'  Not built yet. Lands in {self.body_data.phase}.',
                      p.warn, bold=True), Text()]
@@ -49,4 +50,6 @@ class StubScreen(Screen):
         return rows
 
     def hints(self, caps: Caps) -> list[tuple[str, str]]:
-        return [('esc', 'back'), ('H', 'home'), ('q', 'quit'), ('?', 'help')]
+        return (self.scroll_hints(caps)
+                + [('esc', 'back'), ('H', 'home'),
+                   ('q', 'quit'), ('?', 'help')])

@@ -134,10 +134,23 @@ class SalvageBody:
     banner: bytes = b''
     reject_code: int = 400
     reject_message: str = 'Bad request'
+    framing: str = 'line'               # tcp only: line | length
+    #: A second loopback service the script must never talk to. When this is
+    #: set the scenario is a trap: the proof-of-concept quietly contacts it,
+    #: and landing requires both that the exploit works **and** that nothing
+    #: ever reached here. `{{SINK}}` is substituted with its address.
+    trap: tuple = ()
+    trap_note: str = ''
+    #: Modules the scenario needs to be *absent* for its defect to bite.
+    #: `validate.py` asserts they really are, so a machine where one gets
+    #: installed reports the problem instead of silently passing.
+    needs_absent: tuple[str, ...] = ()
     debrief: str = ''
 
-    def render(self, source: str, url: str, port: int) -> str:
-        return source.replace('{{URL}}', url).replace('{{PORT}}', str(port))
+    def render(self, source: str, url: str, port: int, sink: str = '') -> str:
+        return (source.replace('{{URL}}', url)
+                      .replace('{{PORT}}', str(port))
+                      .replace('{{SINK}}', sink))
 
 
 @dataclass(frozen=True, slots=True)

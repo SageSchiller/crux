@@ -53,6 +53,11 @@ class SalvageScreen(Screen):
         self.watch.start()
 
         self.target = None
+        #: The trap sink of crux D19, when the scenario has one. A second
+        #: loopback service the script must never talk to, so that "you ran a
+        #: stranger script without reading it" is something crux can observe
+        #: rather than something it can only warn about.
+        self.sink = None
         self.path: Path | None = None
         self.runs = 0
         self.opened = False
@@ -79,6 +84,9 @@ class SalvageScreen(Screen):
                                        reject_code=b.reject_code,
                                        reject_message=b.reject_message)
             port = self.target.start()
+            if b.trap:
+                self.sink = MockHttp(b.trap, route='/')
+                self.sink.start()
         except OSError as e:
             self.error = f'could not open a target socket: {e}'
             return
@@ -87,7 +95,8 @@ class SalvageScreen(Screen):
         try:
             work.mkdir(parents=True, exist_ok=True)
             self.path = work / b.filename
-            self.path.write_text(b.render(b.broken, self.url, port),
+            sink_url = self.sink.url if self.sink is not None else ''
+            self.path.write_text(b.render(b.broken, self.url, port, sink_url),
                                  encoding='utf-8')
         except OSError as e:
             self.error = f'could not write the exploit file: {e}'
@@ -98,11 +107,18 @@ class SalvageScreen(Screen):
             return ''
         return getattr(self.target, 'url', f'127.0.0.1:{self.target.port}')
 
+    @property
+    def tripped(self) -> bool:
+        """True once anything at all has reached the trap sink."""
+        return self.sink is not None and self.sink.record.count > 0
+
     def close(self) -> None:
         self.watch.pause()
-        if self.target is not None:
-            self.target.stop()
-            self.target = None
+        for name in ('target', 'sink'):
+            svc = getattr(self, name)
+            if svc is not None:
+                svc.stop()
+                setattr(self, name, None)
 
     # -- handover ----------------------------------------------------------
 
@@ -162,19 +178,28 @@ class SalvageScreen(Screen):
         self._handover([sys.executable, str(self.path)], pause=True)
         landed, detail, met = self.target.verdict()
         self.last = detail
-        if landed:
+        # Tripping the trap ends the scenario immediately whether or not the
+        # exploit worked. That is the lesson: on a real engagement the damage
+        # is done at the moment you press enter, and how well the rest of the
+        # script performed afterwards is not the interesting question.
+        if landed or self.tripped:
             return self._finish()
         return STAY
 
     def _finish(self):
         landed, detail, met = self.target.verdict()
+        if self.tripped:
+            landed = False
+            detail = 'the script contacted an address of its own before it '\
+                     'did anything you asked it to'
         score = score_run(landed, met, len(self.body_data.requirements),
                           detail, self.runs, self.read_first,
                           self.watch.elapsed())
         self.session.record_run(self.scenario, score)
         from .runresult import RunResultScreen
         return replace(RunResultScreen(self.session, self.scenario, score,
-                                       self.target.record))
+                                       self.target.record, self.tripped,
+                                       self.sink))
 
     # -- view --------------------------------------------------------------
 
@@ -206,6 +231,9 @@ class SalvageScreen(Screen):
         t.add('     time  ', p.muted).add(fmt(self.watch.elapsed()), p.fg)
         rows.append(t)
 
+        if self.tripped:
+            rows.append(line('  the script contacted an address of its own',
+                             p.err, bold=True))
         if self.runs:
             _, detail, met = self.target.verdict()
             total = len(b.requirements)

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from ..config import APP_TITLE, TIER_MEANING, TIERS
 from ..render import Caps, Text, line, wrap_rich
-from . import Screen
+from . import ScrollScreen
 
 _ABOUT = (
     '**crux** drills the judgement parts of an engagement: reading raw output '
@@ -23,10 +23,10 @@ _SCORING = (
 )
 
 
-class HelpScreen(Screen):
+class HelpScreen(ScrollScreen):
     title = f'{APP_TITLE}: help'
 
-    def body(self, caps: Caps) -> list[Text]:
+    def content(self, caps: Caps) -> list[Text]:
         p = caps.palette
         rows = wrap_rich(caps, _ABOUT, caps.cols - 6, '  ', p.fg, p.accent)
         rows.append(Text())
@@ -45,4 +45,4 @@ class HelpScreen(Screen):
         return rows
 
     def hints(self, caps: Caps) -> list[tuple[str, str]]:
-        return [('esc', 'back'), ('q', 'quit')]
+        return self.scroll_hints(caps) + [('esc', 'back'), ('q', 'quit')]
