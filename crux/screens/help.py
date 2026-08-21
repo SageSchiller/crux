@@ -22,15 +22,16 @@ _ABOUT = (
 )
 
 _REAL = (
-    '**Are these real?** The `sift` scenarios are modelled on real PEN-200 '
-    'machines (Busqueda, Nibbles, Sau, Cicada and more) and on the course '
-    'methodology; each one shows what it is based on. `salvage` and `conduit` '
-    'run against **synthetic targets on your own loopback**, on purpose: crux '
-    'is safe to hand to anyone and ships no working exploit for real software. '
-    'Each `salvage` exercise is modelled on a real CVE: Drupalgeddon2, '
-    'Shellshock, EternalBlue, the Apache 2.4.49/2.4.50 traversal and more, '
-    'and names it; the defect you fix is the one that broke that real public '
-    'PoC. Only the vulnerable service is a stand-in.'
+    '**Are these real?** The `sift` scenarios are modelled on real attack '
+    'chains. The output is the shape the tools actually produce, and the line '
+    'that mattered is the line that mattered. `salvage` and `conduit` run '
+    'against **synthetic targets on your own loopback**, on purpose: crux '
+    'ships no working exploit for real software and is safe to hand to '
+    'anyone. Each `salvage` exercise names the real CVE its defect comes '
+    'from, among them Drupalgeddon2, Shellshock, EternalBlue, Log4Shell and '
+    'the Apache 2.4.49/2.4.50 traversal. The defect you repair is the one '
+    'that broke that real proof-of-concept; only the vulnerable service is a '
+    'stand-in.'
 )
 
 _TOPICS = {

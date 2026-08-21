@@ -119,7 +119,7 @@ _WILDCARD = MarkBody(
     prompt='Content discovery against a single-page application. Mark every '
            'line that changes what you do next.',
     fixture=FeroxRun(
-        host='app.mirage.vl',
+        host='app.mirage.internal',
         noise=(20, 28),
         wildcard_size=4242,
         hits=(

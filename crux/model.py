@@ -9,9 +9,13 @@ track's engine understands, and the harness never looks inside it.
 (crux D11).** Waypoint's box walk cost 107 defects and six passes to learn that
 content without traceable provenance cannot be audited, only re-read. Every
 scenario here names the writeup it came from and, where one applies, the
-Waypoint node that teaches the thing you missed. The 191 PEN-200 writeups
-already reference 174 distinct node ids, so populating this is transcription
+Waypoint node that teaches the thing you missed. The local writeup corpus
+already references 174 distinct node ids, so populating this is transcription
 rather than invention.
+
+None of it is displayed: `provenance.py` is the only thing that turns a source
+into anything a person sees, and it names neither platform nor machine
+(crux D23).
 
 **Why a sift line carries its own role rather than the scenario carrying a set
 of correct line numbers.** A key held separately can reference a line that the

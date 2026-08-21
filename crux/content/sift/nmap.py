@@ -217,18 +217,18 @@ _DC = MarkBody(
             Port(135, 'msrpc', 'Microsoft Windows RPC'),
             Port(139, 'netbios-ssn', 'Microsoft Windows netbios-ssn'),
             Port(389, 'ldap', 'Microsoft Windows Active Directory LDAP '
-                 '(Domain: hollow.vl)', kind='lead'),
+                 '(Domain: sentinel.local)', kind='lead'),
             Port(445, 'microsoft-ds', '', kind='decoy'),
             Port(464, 'kpasswd5', ''),
             Port(593, 'ncacn_http', 'Microsoft Windows RPC over HTTP 1.0'),
             Port(3268, 'ldap', 'Microsoft Windows Active Directory LDAP '
-                 '(Domain: hollow.vl)', kind='decoy'),
+                 '(Domain: sentinel.local)', kind='decoy'),
             Port(3389, 'ms-wbt-server', 'Microsoft Terminal Services',
                  kind='decoy'),
         ),
     ),
     actions=(
-        Action('Treat this as a domain controller for `hollow.vl`: put the '
+        Action('Treat this as a domain controller for `sentinel.local`: put the '
                'domain and host in `/etc/hosts`, sync time to it, and start '
                'unauthenticated enumeration.', True,
                'Kerberos on 88 with LDAP announcing a domain is a DC, and '

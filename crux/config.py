@@ -72,7 +72,9 @@ def state_path() -> Path:
     return data_dir() / 'state.json'
 
 
-#: Where the PEN-200 writeups live, for the provenance audit of crux D11.
+#: Where the local writeup corpus lives, for the provenance audit of crux
+#: D11. A machine-specific path, never shown to anyone: the app itself
+#: never reads it and content must run on a machine that has never seen it.
 #: Never read by the app itself: content carries its own text, and a scenario
 #: must run on a machine that has never seen the vault. Only `validate.py`
 #: looks, and only to check that a cited path is a real file.

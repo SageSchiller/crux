@@ -1042,6 +1042,72 @@ def test_conduit_end_to_end() -> None:
        'and the failure names what did not answer')
 
 
+def test_no_third_party_attribution() -> None:
+    """Nothing the program shows may name a training platform or a machine.
+
+    crux D23: the exercises stand on the technique being real and, where one
+    applies, on the CVE. Naming somebody else's course, lab or box adds
+    nothing a student can use and quietly stops crux being handable to anyone.
+    The `source` field still records where a scenario came from, because
+    `validate.py` audits it, but it is authoring metadata and is never
+    rendered.
+
+    This walks every string any screen can display, which is the only way to
+    keep it true as content grows.
+    """
+    import re
+
+    from crux.model import ChainBody, ConduitBody, MarkBody, SalvageBody
+    from crux.provenance import based_on
+
+    banned = re.compile(
+        r'hackthebox|\bhtb\b|proving\s?ground|vulnlab|prolabs|pen-?200|'
+        r'\boscp\b|offsec|\.vl\b|'
+        r'\b(cicada|busqueda|nibbles|monitored|lavita|updown|markup|jacko|'
+        r'cereal|jeeves|siteisup|searcher|hollow)\b', re.I)
+
+    def strings(sc):
+        b = sc.body
+        out = [sc.title, based_on(sc.source)]
+        if isinstance(b, MarkBody):
+            out += [b.prompt, b.debrief]
+            out += [l.text for l in b.canonical()]
+            out += [a.text for a in b.actions] + [a.why for a in b.actions]
+        elif isinstance(b, SalvageBody):
+            out += [b.brief, b.debrief, b.real_note, b.models, b.cve,
+                    b.broken, b.solution]
+        elif isinstance(b, ConduitBody):
+            out += [b.brief, b.debrief, b.starter, b.solution]
+        elif isinstance(b, ChainBody):
+            out += [b.brief, b.debrief]
+            for st in b.stages:
+                out += [st.bridge, st.title]
+        return out
+
+    for sc in load().scenarios:
+        for text in strings(sc):
+            hit = banned.search(text or '')
+            ok(hit is None,
+               f'{sc.id}: displayed text names a third party '
+               f'({hit.group(0) if hit else ""})')
+
+    # The label itself must be one of the two non-attributing forms.
+    from crux.provenance import FROM_CHAIN, FROM_TRADECRAFT
+    for sc in load().scenarios:
+        if sc.source:
+            ok(based_on(sc.source) in (FROM_CHAIN, FROM_TRADECRAFT),
+               f'{sc.id}: provenance label is non-attributing')
+
+    # And the help screen, which is where the question gets answered.
+    from crux.screens.help import HelpScreen
+    caps = all_caps()[0]
+    for topic in (None, 'sift', 'salvage', 'conduit', 'chain'):
+        shown = ''.join(r.plain() for r in HelpScreen(topic).render(caps))
+        hit = banned.search(shown)
+        ok(hit is None,
+           f'help({topic}) names a third party ({hit.group(0) if hit else ""})')
+
+
 def test_splash() -> None:
     """The launch and exit sequences: every rung, and the guards.
 
@@ -1292,7 +1358,8 @@ def main() -> int:
                test_result_screens_scroll, test_conduit_engine,
                test_conduit_end_to_end, test_all_conduit_solutions,
                test_chain_flow, test_chain_partial, test_home_shows_chain,
-               test_list_windowing, test_splash,
+               test_list_windowing, test_no_third_party_attribution,
+               test_splash,
                test_screens_render, test_screen_contract, test_walkthrough,
                test_stub_records_nothing, test_session_persists, test_panning):
         fn()

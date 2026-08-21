@@ -20,7 +20,7 @@ _ODD_SHARE = MarkBody(
     prompt='Anonymous share enumeration against a domain member. Mark every '
            'line that changes what you do next.',
     fixture=SmbShares(
-        host='', netbios='FS01', domain='cicada.htb',
+        host='', netbios='FS01', domain='harbord.local',
         shares=(
             Share('HR', 'Disk', '', kind='lead'),
             Share('DEV', 'Disk', 'Development', kind='decoy'),

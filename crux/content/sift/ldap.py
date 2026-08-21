@@ -21,7 +21,7 @@ _DESCRIPTION = MarkBody(
     prompt='An anonymous LDAP dump of domain users. Mark every line that '
            'changes what you do next.',
     fixture=LdapUsers(
-        domain='DC=cicada,DC=htb',
+        domain='DC=harbord,DC=local',
         noise=(6, 9),
         users=(
             DirUser('michael.wrightson', 'Account created by IT'),
@@ -112,7 +112,7 @@ _QUIET_DIR = MarkBody(
     prompt='A domain user dump taken with a low-privilege account. Mark every '
            'line that changes what you do next.',
     fixture=LdapUsers(
-        domain='DC=hollow,DC=vl',
+        domain='DC=meridian,DC=local',
         noise=(7, 10),
         users=(
             DirUser('svc_sched', 'Scheduled tasks', flags='NORMAL_ACCOUNT',
