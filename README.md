@@ -27,7 +27,7 @@ Python 3, standard library only. No pip, no network, ever.
 
 ## Status
 
-**v1.3.0. All three tracks are built, and chain mode threads them into two
+**v1.4.0. All three tracks are built, and chain mode threads them into two
 engagements.** Thirty-three `sift` scenarios across ten families, ten
 `salvage` defect classes each grounded in a real CVE, seven `conduit`
 topologies, and two full engagements that run all three tracks end to end: one
