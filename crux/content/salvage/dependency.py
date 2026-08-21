@@ -75,9 +75,13 @@ SCENARIOS = [
             filename='wexler_pwn.py',
             cve='CVE-2021-3156', models='sudo "Baron Samedit"',
             real_note=(
-                'Baron Samedit and most of exploit-db ship as pwntools scripts. '
-                'On an exam box with no internet and no pip, the twenty-line '
-                'stdlib port is the difference between a shell and nothing.'
+                'Baron Samedit is the kind of local privilege escalation you '
+                'will actually meet, and the archives carry it in several '
+                'forms. The transferable problem is the import line: a Python '
+                'proof-of-concept that reaches for pwntools, impacket or '
+                'requests is dead on a box with no internet and no pip, and '
+                'the rewrite against the standard library is usually twenty '
+                'lines.'
             ),
             defects=('imports pwntools for what socket already does',),
             kind='tcp',

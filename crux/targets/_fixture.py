@@ -701,3 +701,144 @@ class HttpResponse(Fixture):
             for src in self.source:
                 out.append(Line(_slug('s', src.text), src.text, src.kind))
         return tuple(out)
+
+
+# --------------------------------------------------------------------------
+# Windows: whoami /priv
+# --------------------------------------------------------------------------
+
+@dataclass(frozen=True, slots=True)
+class Priv:
+    name: str
+    desc: str
+    state: str = 'Enabled'
+    kind: str = 'noise'
+
+
+#: Privileges that grant nothing on their own and turn up on ordinary and
+#: service accounts alike. Present so the one privilege that matters has the
+#: furniture to hide among, which is the entire reading problem on this
+#: screen. A real token lists eight to a dozen of these and which ones depends
+#: on the account, so a seeded subset is both the honest rendering and what
+#: keeps the screen from being memorable by row position (crux D10).
+_STOCK_PRIVS: tuple[Priv, ...] = (
+    Priv('SeIncreaseWorkingSetPrivilege', 'Increase a process working set',
+         'Disabled'),
+    Priv('SeShutdownPrivilege', 'Shut down the system', 'Disabled'),
+    Priv('SeUndockPrivilege', 'Remove computer from docking station',
+         'Disabled'),
+    Priv('SeTimeZonePrivilege', 'Change the time zone', 'Disabled'),
+    Priv('SeSystemtimePrivilege', 'Change the system time', 'Disabled'),
+    Priv('SeProfileSingleProcessPrivilege', 'Profile single process',
+         'Disabled'),
+    Priv('SeIncreaseBasePriorityPrivilege',
+         'Increase scheduling priority', 'Disabled'),
+    Priv('SeCreatePagefilePrivilege', 'Create a pagefile', 'Disabled'),
+    Priv('SeManageVolumePrivilege', 'Perform volume maintenance tasks',
+         'Disabled'),
+)
+
+#: Held by literally every account, and always listed first because of the
+#: order the token is built in. Kept out of the drawn pool so it is always
+#: present and always at the top, which is what real output looks like.
+_ALWAYS_PRIV = Priv('SeChangeNotifyPrivilege', 'Bypass traverse checking')
+
+
+class WhoamiPriv(Fixture):
+    """`whoami /priv` output, in the real column layout.
+
+    Service accounts carry a handful of privileges that every account has and,
+    occasionally, one that hands you the machine. The columns are wide and the
+    names all begin `Se`, which is exactly why the interesting row is so easy
+    to scroll past.
+    """
+
+    def __init__(self, user: str, privs: tuple[Priv, ...],
+                 stock: tuple[int, int] = (5, 8)) -> None:
+        self.user = user
+        self.privs = privs
+        self.stock = stock
+
+    def build(self, seed: int) -> tuple[Line, ...]:
+        r = _rng(seed)
+        rows = list(self.privs)
+        taken = {p.name for p in rows}
+        pool = [p for p in _STOCK_PRIVS if p.name not in taken]
+        if self.stock[1]:
+            n = min(r.randint(*self.stock), len(pool))
+            rows += r.sample(pool, n)
+        r.shuffle(rows)
+        # `SeChangeNotify` is on every account and always listed first,
+        # because of the order the token is built in. Everything after it is
+        # genuinely unordered.
+        if _ALWAYS_PRIV.name not in taken:
+            rows.insert(0, _ALWAYS_PRIV)
+        else:
+            rows.sort(key=lambda p: p.name != _ALWAYS_PRIV.name)
+
+        out: list[Line] = [
+            Line('h1', f'{self.user}'),
+            Line('h2', ''),
+            Line('h3', 'PRIVILEGES INFORMATION'),
+            Line('h4', '----------------------'),
+            Line('h5', ''),
+            Line('h6', 'Privilege Name                Description'
+                       '                                    State'),
+            Line('h7', '============================= '
+                       '========================================== ========'),
+        ]
+        for p in rows:
+            out.append(Line(_slug('p', p.name),
+                            f'{p.name:<29} {p.desc:<42} {p.state}', p.kind))
+        return tuple(out)
+
+
+# --------------------------------------------------------------------------
+# A plain block of command output
+# --------------------------------------------------------------------------
+
+class TextBlock(Fixture):
+    """Straight command output: a fixed header, then rows that may shuffle.
+
+    For the screens whose shape is neither a table nor a scan: an `icacls`
+    listing, a `sc qc`, a directory. Rows carry their own kind, so a lead is
+    authored exactly as it is everywhere else.
+    """
+
+    def __init__(self, header: tuple[str, ...], rows: tuple[Note, ...],
+                 shuffle: bool = False, footer: tuple[str, ...] = (),
+                 noise_pool: tuple[Note, ...] = (),
+                 noise: tuple[int, int] = (0, 0)) -> None:
+        self.header = header
+        self.rows = rows
+        #: Real ACL listings do not fix their order, so shuffling is honest
+        #: there. Command output with named fields (`sc qc`) does fix it, and
+        #: shuffling that would look wrong to anyone who has read one.
+        self.shuffle = shuffle
+        self.footer = footer
+        #: Extra rows this command really does print, drawn per seed and kept
+        #: in pool order so the field sequence still looks like the tool. This
+        #: is what varies the screen between attempts (crux D10) for output
+        #: whose rows cannot be reordered. Authored rows, and therefore every
+        #: lead, keep their text and so keep their ids.
+        self.noise_pool = noise_pool
+        self.noise = noise
+
+    def build(self, seed: int) -> tuple[Line, ...]:
+        r = _rng(seed)
+        out: list[Line] = [Line(f'h{i}', h) for i, h in enumerate(self.header)]
+        rows = list(self.rows)
+        if self.noise_pool and self.noise[1]:
+            take = r.randint(*self.noise)
+            picked = sorted(r.sample(range(len(self.noise_pool)),
+                                     min(take, len(self.noise_pool))))
+            extra = [self.noise_pool[i] for i in picked]
+            # Interleave at seeded positions, keeping pool order intact.
+            for note in extra:
+                rows.insert(r.randint(0, len(rows)), note)
+        if self.shuffle:
+            r.shuffle(rows)
+        for row in rows:
+            out.append(Line(_slug('r', row.text), row.text, row.kind))
+        out += [Line(f't{i}', t) for i, t in enumerate(self.footer)]
+        return tuple(out)
