@@ -21,13 +21,14 @@ Three tracks:
 python3 -m crux            # from the source tree (opens on the CRUX scan-lock splash; --no-splash skips it)
 ./build.sh && dist/crux.pyz   # a single file that needs nothing installed
 python3 -m crux --doctor   # what this terminal and machine support
+python3 -m crux --reset    # erase progress (history, work, or all); asks first
 ```
 
 Python 3, standard library only. No pip, no network, ever.
 
 ## Status
 
-**v1.4.0. All three tracks are built, and chain mode threads them into two
+**v1.5.0. All three tracks are built, and chain mode threads them into two
 engagements.** Thirty-three `sift` scenarios across ten families, ten
 `salvage` defect classes each grounded in a real CVE, seven `conduit`
 topologies, and two full engagements that run all three tracks end to end: one
