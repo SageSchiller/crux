@@ -38,6 +38,7 @@ SETTLE = 0.45
 #: clock puts the lead at a row this script cannot predict. Pinning it is what
 #: makes "press Down N times" a legal instruction here.
 SEED = 0
+SPLASH_MIN_FRAMES = 6
 SCENARIO = 'sift-nmap-pinned'
 
 CHECKS = 0
@@ -70,7 +71,7 @@ class Driver:
             os.chdir(str(ROOT))
             os.execv(sys.executable,
                      [sys.executable, '-m', 'crux', '--no-alt-screen',
-                      '--seed', str(SEED)])
+                      '--no-splash', '--seed', str(SEED)])
         fcntl.ioctl(self.fd, termios.TIOCSWINSZ,
                     struct.pack('HHHH', ROWS, COLS, 0, 0))
 
@@ -106,6 +107,64 @@ class Driver:
         _, status = os.waitpid(self.pid, 0)
         return os.waitstatus_to_exitcode(status) if hasattr(
             os, 'waitstatus_to_exitcode') else status
+
+
+def check_splash() -> None:
+    """The opening animation plays, holds, and a key releases it.
+
+    Driven separately because the functional Driver launches with --no-splash:
+    those tests are about screens, this one is about the entrance. Uses its own
+    short-lived process so a held splash cannot stall the rest of the suite.
+    """
+    import fcntl
+    import struct
+    import termios
+    import time
+
+    home = tempfile.mkdtemp(prefix='crux-tty-splash-')
+    pid, fd = pty.fork()
+    if pid == 0:
+        os.environ['TERM'] = 'xterm-256color'
+        os.environ['COLORTERM'] = 'truecolor'
+        os.environ['XDG_DATA_HOME'] = home
+        os.chdir(str(ROOT))
+        os.execv(sys.executable,
+                 [sys.executable, '-m', 'crux', '--no-alt-screen'])
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
+    buf = b''
+    t = time.time()
+    while time.time() - t < 1.2:
+        if select.select([fd], [], [], 0.1)[0]:
+            try:
+                buf += os.read(fd, 65536)
+            except OSError:
+                break
+    ok(buf.count(b'\x1b[2J') >= SPLASH_MIN_FRAMES,
+       'the opening animation repaints several frames')
+    # The wordmark is drawn in block characters, not the literal string, so
+    # its presence is the block glyph reaching the screen.
+    ok(b'\xe2\x96\x88' in buf, 'the block wordmark reaches the screen')
+    txt = strip(buf.decode('utf-8', 'replace'))
+    ok('reach it' in txt, 'the tagline shows under it')
+    ok('press any key' in txt, 'and the held frame names its own exit')
+    os.write(fd, b' ')
+    time.sleep(0.4)
+    after = b''
+    while select.select([fd], [], [], 0.1)[0]:
+        try:
+            after += os.read(fd, 65536)
+        except OSError:
+            break
+    a = strip(after.decode('utf-8', 'replace'))
+    ok('sift' in a or 'salvage' in a,
+       'a key releases the hold into the picker')
+    try:
+        os.write(fd, b'q')
+        time.sleep(0.3)
+        os.close(fd)
+    except OSError:
+        pass
+    os.waitpid(pid, 0)
 
 
 def main() -> int:
@@ -226,6 +285,8 @@ def main() -> int:
         code = d.close()
 
     ok(code == 0, f'the app exits cleanly on q (got {code})')
+
+    check_splash()
 
     if FAILURES:
         for f in FAILURES:

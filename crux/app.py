@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 from . import render as R
+from . import splash as SP
 from . import term as T
 from .clock import RealClock, fmt
 from .config import APP_NAME, APP_TITLE, MIN_COLS, MIN_ROWS, SECTIONS, TRACKS
@@ -49,6 +50,8 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
                     help='pin every fixture to this seed instead of drawing '
                          'a fresh one per attempt; use it to reproduce an '
                          'attempt from the seed stored in your history')
+    ap.add_argument('--no-splash', action='store_true',
+                    help='skip the opening and closing animations')
     ap.add_argument('--no-alt-screen', action='store_true',
                     help='do not use the alternate screen buffer')
     return ap.parse_args(argv)
@@ -138,6 +141,14 @@ def run(argv: list[str] | None = None) -> int:
         # through every constructor, and None outside a TTY so the handover
         # helper can degrade to running in place.
         session.terminal = tty
+        # The entrance, and the exit, both honour --no-splash. The intro loads
+        # nothing (Session.open already did), so it is pure identity: the name
+        # resolving out of noise, which is the app's own thesis as its door.
+        splash_caps = R.detect_caps(theme=args.theme, ascii_only=args.ascii,
+                                    cols=T.size()[0], rows=T.size()[1])
+        show_splash = not args.no_splash and not T.too_small()
+        if show_splash:
+            SP.play(tty, splash_caps, note=SP.scope_note(session.registry))
         try:
             while stack:
                 cols, rows = T.size()
@@ -175,6 +186,11 @@ def run(argv: list[str] | None = None) -> int:
         finally:
             for s in stack:
                 s.close()
+            if show_splash:
+                cols, rows = T.size()
+                SP.outro(tty, R.detect_caps(theme=args.theme,
+                                            ascii_only=args.ascii,
+                                            cols=cols, rows=rows))
     return 0
 
 

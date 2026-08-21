@@ -982,6 +982,79 @@ def test_conduit_end_to_end() -> None:
        'and the failure names what did not answer')
 
 
+def test_splash() -> None:
+    """The launch and exit sequences: every rung, and the guards.
+
+    A splash that could throw would be the one thing able to fail a launch, so
+    the whole point of the checks is that it never does and always degrades.
+    """
+    from crux import splash as SP
+
+    # It renders at every rung, fits the documented minimum, and the ASCII
+    # rung stays pure ASCII: a screen of tofu is not an entrance.
+    for caps in all_caps(SP.MIN_COLS, SP.MIN_ROWS):
+        for step in range(SP.STEPS):
+            rows = SP.frame(caps, step, note='26 sift  10 salvage')
+            ok(bool(rows), 'the intro frame renders')
+            for r in rows:
+                ok(r.width() <= caps.cols,
+                   f'intro line of {r.width()} exceeds {caps.cols}')
+        for step in range(SP.OUT_STEPS):
+            for r in SP.out_frame(caps, step):
+                ok(r.width() <= caps.cols, 'outro line fits')
+        for r in SP.farewell_frame(caps):
+            ok(r.width() <= caps.cols, 'farewell line fits')
+        if caps.glyphs is R.GlyphLevel.ASCII:
+            for producer in (SP.frame(caps, SP.STEPS - 1, hold=True),
+                             SP.out_frame(caps, 0), SP.farewell_frame(caps)):
+                plain = ''.join(r.plain() for r in producer)
+                ok(plain.isascii(),
+                   'the splash ASCII rung carries no non-ASCII')
+
+    # The resolve is a real animation: step 0 is mostly noise, the last step
+    # is exactly the art, and they differ.
+    caps = R.Caps(R.ColorLevel.TRUE, R.GlyphLevel.UNICODE,
+                  next(iter(PALETTES.values())), 80, 22)
+    first = ''.join(r.plain() for r in SP.frame(caps, 0))
+    last = ''.join(r.plain() for r in SP.frame(caps, SP.STEPS - 1))
+    ok('CRUX' not in ''.join(SP.BLOCK) or first != last,
+       'the entrance actually animates rather than snapping')
+    for ln in SP.BLOCK:
+        ok(ln in last, 'the final frame is the resolved wordmark')
+
+    # It degrades: too small to fit means it does not play at all.
+    ok(SP.fits(caps), 'a big enough window fits the splash')
+    ok(not SP.fits(R.Caps(R.ColorLevel.NONE, R.GlyphLevel.ASCII,
+                          next(iter(PALETTES.values())), 20, 6)),
+       'a tiny window does not')
+
+    # The scope note is computed from the registry and never throws.
+    note = SP.scope_note(load())
+    ok('sift' in note and 'chain' in note,
+       'the scope note names the sections that loaded')
+
+    # play() and outro() drive a fake terminal without a real one, and neither
+    # raises. This is the guarantee that matters: an entrance cannot be the
+    # thing that fails a launch.
+    class _FakeTty:
+        def __init__(self): self.writes = 0
+        def write(self, s): self.writes += 1
+        def read_keys(self, timeout=None): return []
+    t1 = _FakeTty()
+    SP.play(t1, caps, note=note, hold=False)
+    ok(t1.writes > 0, 'play writes frames to the terminal')
+    t2 = _FakeTty()
+    SP.outro(t2, caps, hold=0.0)
+    ok(t2.writes > 0, 'outro writes frames to the terminal')
+
+    class _AngryTty:
+        def write(self, s): raise OSError('terminal went away')
+        def read_keys(self, timeout=None): raise OSError('gone')
+    SP.play(_AngryTty(), caps, hold=False)
+    SP.outro(_AngryTty(), caps, hold=0.0)
+    ok(True, 'a terminal that throws on every call does not crash the splash')
+
+
 def test_screen_contract() -> None:
     session = Session.open(clock=FakeClock(), read_only=True, seed_override=0)
     caps = all_caps()[0]
@@ -1145,6 +1218,7 @@ def main() -> int:
                test_result_screens_scroll, test_conduit_engine,
                test_conduit_end_to_end, test_all_conduit_solutions,
                test_chain_flow, test_chain_partial, test_home_shows_chain,
+               test_splash,
                test_screens_render, test_screen_contract, test_walkthrough,
                test_stub_records_nothing, test_session_persists, test_panning):
         fn()
