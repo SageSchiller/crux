@@ -111,6 +111,12 @@ _STAGE2 = SalvageBody(
     filename='wexler_rce.py',
     defects=('Python 2 print statement', 'urllib2',
              'urlencode returns str not bytes'),
+    cve='CVE-2018-7600', models='Drupal "Drupalgeddon2"',
+    real_note=(
+        'The public Drupalgeddon2 exploits were written for Python 2. On a '
+        'current Kali they will not start until you port them, which is '
+        'exactly the wall this stage puts in front of you.'
+    ),
     route='/admin/import', reject_code=400,
     reject_message='template missing',
     broken=_S2_BROKEN, solution=_S2_SOLUTION,

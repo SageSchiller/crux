@@ -238,7 +238,19 @@ def test_loader() -> None:
     ok(reg.track('sift').ready, 'sift has a real engine')
     ok(reg.track('salvage').ready, 'salvage has a real engine now')
     ok(reg.track('conduit').ready, 'conduit has a real engine now')
-    ok(len(reg.track('chain').scenarios) >= 1, 'chain mode has an engagement')
+    chains = reg.track('chain').scenarios
+    ok(len(chains) >= 2, f'{len(chains)} chain engagements')
+    # The two engagements must not be the same box twice: the exam is half
+    # Linux and half domain, so the capstone has to cover both shapes.
+    from crux.model import ChainBody as _CB
+    kinds = set()
+    for c in chains:
+        if isinstance(c.body, _CB):
+            kinds.add(tuple(type(st.body).__name__ for st in c.body.stages))
+    ok(all(len(k) == 3 for k in kinds), 'every engagement is three stages')
+    ids = {c.id for c in chains}
+    ok('chain-wexler' in ids and 'chain-northwind' in ids,
+       'both the single-host and the domain engagements are present')
     ok(len(reg.track('sift').scenarios) >= 9, 'sift has real breadth')
     ok(reg.by_id('sift-smoke-nmap') is None,
        'Phase 0 scaffolding was deleted, not left beside real content')

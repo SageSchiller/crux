@@ -279,6 +279,33 @@ def check_chain_runs(reg) -> None:
                     if not target.verdict()[0]:
                         err(f'{s.id}: the salvage leg solution does not land, '
                             'so the engagement cannot be completed')
+
+                # And the broken script must NOT land, or the leg teaches
+                # nothing. Checked separately against a fresh target, because
+                # the first one has the solution's hit on its record. This is
+                # the same standard the standalone tracks are held to, and it
+                # was missing here.
+                broken_target = (
+                    MockTcp(b.requirements, banner=b.banner)
+                    if b.kind == 'tcp'
+                    else MockHttp(b.requirements, route=b.route,
+                                  reject_code=b.reject_code,
+                                  reject_message=b.reject_message))
+                with broken_target:
+                    work = Path(tempfile.mkdtemp(prefix='crux-chain-b-'))
+                    path = work / b.filename
+                    path.write_text(b.render(
+                        b.broken, getattr(broken_target, 'url', ''),
+                        broken_target.port))
+                    try:
+                        subprocess.run([sys.executable, str(path)],
+                                       cwd=str(work), capture_output=True,
+                                       timeout=30)
+                    except subprocess.TimeoutExpired:
+                        pass
+                    if broken_target.verdict()[0]:
+                        err(f'{s.id}: the salvage leg broken script already '
+                            'lands, so that stage teaches nothing')
             elif isinstance(st.body, ConduitBody):
                 if not ns_ok or missing_needs(
                         Scenario(id='x', track='conduit', title='x', tier='verified',
@@ -296,6 +323,11 @@ def check_chain_runs(reg) -> None:
                 if not r.ok:
                     err(f'{s.id}: the conduit leg solution does not open the '
                         f'path ({r.detail or r.error})')
+                path.write_text(st.body.render(st.body.starter, str(assets)))
+                rb = run_attempt(st.body.topology, path, assets, st.body.settle)
+                if rb.ok:
+                    err(f'{s.id}: the conduit leg starter already opens the '
+                        'path, so that stage teaches nothing')
 
 
 def check_salvage_runs(reg) -> None:
