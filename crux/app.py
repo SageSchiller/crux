@@ -20,7 +20,7 @@ from pathlib import Path
 from . import render as R
 from . import term as T
 from .clock import RealClock, fmt
-from .config import APP_NAME, APP_TITLE, MIN_COLS, MIN_ROWS, TRACKS
+from .config import APP_NAME, APP_TITLE, MIN_COLS, MIN_ROWS, SECTIONS, TRACKS
 from .loader import load
 from .session import Session
 from .state import State
@@ -68,9 +68,9 @@ def _doctor() -> int:
     print(f'  glyphs        {caps.glyphs.name}')
     print(f'  kitty keys    {T.kitty_supported()}')
     reg = load()
-    for name in TRACKS:
+    for name in SECTIONS:
         tr = reg.track(name)
-        print(f'  track {name:<9}{len(tr.scenarios)} scenario(s)'
+        print(f'  {name:<9}{len(tr.scenarios)} scenario(s)'
               f'{"" if tr.ready else "   engine not built yet"}')
     for e in reg.errors:
         print(f'  LOAD ERROR    {e}')

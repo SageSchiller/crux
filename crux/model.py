@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .config import TIERS, TRACKS
+from .config import SECTIONS, TIERS, TRACKS
 
 #: What a line in a sift fixture is *for*. `lead` is the thing that mattered,
 #: `decoy` is authored to tempt (and costs more when chased, per crux D8), and
@@ -215,7 +215,7 @@ class Scenario:
     seed: int = 0
 
     def __post_init__(self) -> None:
-        if self.track not in TRACKS:
+        if self.track not in SECTIONS:
             raise ContentError(f'{self.id}: unknown track {self.track!r}')
         if self.tier not in TIERS:
             raise ContentError(f'{self.id}: unknown tier {self.tier!r}')
@@ -241,6 +241,39 @@ def missing_needs(scenario: Scenario) -> tuple[str, ...]:
             continue
         out.append(tool)
     return tuple(out)
+
+
+@dataclass(frozen=True, slots=True)
+class Stage:
+    """One leg of a chain: a track, a body its engine understands, and the
+    narrative that leads into it.
+
+    `title` and `tier` are what the sub-scenario the play-screen sees will
+    carry, so a chain stage is scored and rendered exactly as the standalone
+    version would be. `needs` rides along for a conduit leg.
+    """
+
+    track: str
+    body: object
+    bridge: str                       # shown before this stage begins
+    title: str = ''
+    needs: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ChainBody:
+    """A full engagement: find the lead, land the exploit, reach the next host.
+
+    The stages are the three tracks in engagement order, and the fiction runs
+    through all of them: the service you spot in stage one is the one you
+    exploit in stage two, and the foothold from stage two is where you pivot
+    in stage three. That continuity is the whole reason chain mode exists and
+    the three tracks are one program rather than three.
+    """
+
+    brief: str
+    stages: tuple[Stage, ...]
+    debrief: str = ''
 
 
 @dataclass

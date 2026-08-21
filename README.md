@@ -27,13 +27,13 @@ Python 3, standard library only. No pip, no network, ever.
 
 ## Status
 
-**Phase 6 complete: all three tracks are built out.** Twenty-six `sift`
-scenarios across seven families, ten `salvage` scenarios one per defect class,
-and seven `conduit` topologies from a single local forward to a chisel agent,
-each one building a real network and verifying the path through it.
+**v1.0.0. All three tracks are built, and chain mode threads them into one
+engagement.** Twenty-six `sift` scenarios across seven families, ten `salvage`
+defect classes, seven `conduit` topologies, and the Wexler Corp chain that runs
+all three end to end: read the scan, repair the exploit, pivot to the next
+host.
 
-Only chain mode remains: one scenario carried through all three tracks. See
-`CRUX-PLAN.md`, which is the file to read first.
+See `CRUX-PLAN.md`, which is the file to read first.
 
 ## After any change
 

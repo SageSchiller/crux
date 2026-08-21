@@ -25,10 +25,15 @@ class MarkScreen(ListScreen):
     """A screen of output, and a cursor that marks what mattered."""
 
     def __init__(self, session: Session, scenario: Scenario,
-                 seed: int | None = None) -> None:
+                 seed: int | None = None, on_done=None) -> None:
         super().__init__()
         self.session = session
         self.scenario = scenario
+        #: Set in chain mode. When present the screen advances the chain
+        #: instead of recording an attempt and showing its own result, so a
+        #: sift stage inside an engagement is scored exactly as the standalone
+        #: version but flows on rather than stopping.
+        self.on_done = on_done
         self.body_data: MarkBody = scenario.body
         #: A fresh screen per attempt (crux D10). Drawn from the injected clock
         #: rather than from `random`, so a FakeClock makes tests exact and
@@ -168,9 +173,11 @@ class MarkScreen(ListScreen):
             self._handed_off = True
             return replace(ActScreen(self.session, self.scenario,
                                      tuple(sorted(self.marked)), self.watch,
-                                     self.lines, self.seed))
+                                     self.lines, self.seed, self.on_done))
         score = score_marks(self.leads, self.decoys, self.marked,
                             elapsed=self.watch.elapsed())
+        if self.on_done is not None:
+            return self.on_done(score)
         self.session.record(self.scenario, score, tuple(sorted(self.marked)),
                             self.seed)
         from .result import ResultScreen
@@ -191,10 +198,12 @@ class ActScreen(ListScreen):
     """
 
     def __init__(self, session: Session, scenario: Scenario,
-                 marked: tuple[str, ...], watch, lines, seed: int) -> None:
+                 marked: tuple[str, ...], watch, lines, seed: int,
+                 on_done=None) -> None:
         super().__init__()
         self.session = session
         self.scenario = scenario
+        self.on_done = on_done
         self.marked = marked
         self.lines = lines
         self.seed = seed
@@ -245,6 +254,8 @@ class ActScreen(ListScreen):
         score = score_marks(self.leads, self.decoys, self.marked,
                             action_ok=a.correct, has_action=True,
                             elapsed=self.watch.elapsed())
+        if self.on_done is not None:
+            return self.on_done(score)
         self.session.record(self.scenario, score, self.marked, self.seed)
         from .result import ResultScreen
         return replace(ResultScreen(self.session, self.scenario, score,

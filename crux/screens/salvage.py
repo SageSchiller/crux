@@ -45,9 +45,11 @@ def _editor() -> list[str]:
 
 
 class SalvageScreen(Screen):
-    def __init__(self, session: Session, scenario: Scenario) -> None:
+    def __init__(self, session: Session, scenario: Scenario,
+                 on_done=None) -> None:
         self.session = session
         self.scenario = scenario
+        self.on_done = on_done
         self.body_data: SalvageBody = scenario.body
         self.watch = Stopwatch(session.clock)
         self.watch.start()
@@ -195,6 +197,8 @@ class SalvageScreen(Screen):
         score = score_run(landed, met, len(self.body_data.requirements),
                           detail, self.runs, self.read_first,
                           self.watch.elapsed())
+        if self.on_done is not None:
+            return self.on_done(score)
         self.session.record_run(self.scenario, score)
         from .runresult import RunResultScreen
         return replace(RunResultScreen(self.session, self.scenario, score,

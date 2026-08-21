@@ -37,10 +37,19 @@ MIN_ROWS = 24
 #: and five, and adding one must cost nothing but a row here.
 TRACKS = ('sift', 'salvage', 'conduit')
 
+#: Chain mode composes the three tracks into one engagement. It is not a fourth
+#: skill track (that is what `proctor` and `lineage` will be); it is the reason
+#: the three are one program. Kept separate from TRACKS so everything that
+#: means "the three skills" stays meaning exactly that, and SECTIONS is what
+#: means "everything with content".
+CHAIN = 'chain'
+SECTIONS = TRACKS + (CHAIN,)
+
 TRACK_BLURB = {
     'sift': 'Find the lead in raw tool output.',
     'salvage': 'Repair a broken proof-of-concept until it lands.',
     'conduit': 'Build the tunnel chain that reaches the next subnet.',
+    'chain': 'One engagement, all three tracks, end to end.',
 }
 
 #: The verification tiers of crux D6. Never blurred, always shown.

@@ -75,6 +75,10 @@ class TrackScreen(ListScreen):
         from .salvage import SalvageScreen
         from .stub import StubScreen
         s = self.track.scenarios[index]
+        from ..model import ChainBody
+        if isinstance(s.body, ChainBody):
+            from .chain import ChainIntroScreen
+            return push(ChainIntroScreen(self.session, s))
         miss = missing_needs(s)
         if miss:
             return push(NeedsScreen(self.session, s, miss))

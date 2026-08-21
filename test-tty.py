@@ -127,6 +127,7 @@ def main() -> int:
         ok('CRUX' in home, 'the picker renders its title')
         ok('sift' in home and 'salvage' in home and 'conduit' in home,
            'all three tracks are listed')
+        ok('chain' in home, 'and the chain capstone')
         ok('scenario' in home,
            'the picker shows how much content each track has')
         ok('engine not built yet' not in home,
@@ -207,6 +208,20 @@ def main() -> int:
         if 'cannot verify' not in first:
             ok('r build and run' in first, 'and offers to build the network')
             ok('key' in first, 'and tells you where the SSH key is')
+
+        # chain: the capstone, driven from the picker into its first stage.
+        d.send(b'H')
+        # cursor is on conduit (row 3, index 2); one more Down reaches chain.
+        d.send(b'\x1b[B')
+        chain = d.send(b'\r')
+        ok('chain' in chain or 'engagement' in chain.lower(),
+           'the chain section opens')
+        intro = d.send(b'\r')
+        ok('Three stages' in intro or 'engagement' in intro.lower(),
+           'the engagement brief shows')
+        stage1 = d.send(b'\r')
+        ok('Wexler' in stage1 or 'scan' in stage1.lower(),
+           'and begin opens the first stage')
     finally:
         code = d.close()
 

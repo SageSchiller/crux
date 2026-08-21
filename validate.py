@@ -18,10 +18,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from crux import render as R
-from crux.config import EXIT_CHORD, TIERS, TRACKS, vault_dir
+from crux.config import CHAIN, EXIT_CHORD, SECTIONS, TIERS, TRACKS, vault_dir
 from crux.loader import load
-from crux.model import (LINE_KINDS, ConduitBody, MarkBody, SalvageBody,
-                        Scenario, StubBody, missing_needs, roles)
+from crux.model import (ChainBody, ConduitBody, LINE_KINDS, MarkBody,
+                        SalvageBody, Scenario, Stage, StubBody,
+                        missing_needs, roles)
 from crux.scoring import DECOY_WEIGHT, score_marks
 from crux.screens import Screen
 from crux.version import VERSION
@@ -44,13 +45,59 @@ def check_registry(reg) -> None:
     ids = [s.id for s in reg.scenarios]
     if len(ids) != len(set(ids)):
         err('duplicate scenario ids across tracks')
-    for name in TRACKS:
+    for name in SECTIONS:
         if name not in reg.tracks:
-            err(f'track {name} did not load at all')
+            err(f'section {name} did not load at all')
+
+
+def check_chain_body(s: Scenario) -> None:
+    """A chain must be exactly the three tracks in engagement order, each leg
+    carrying a body its own engine can run.
+
+    The order matters: the fiction is find, then land, then reach, and a chain
+    that ran salvage before sift would be teaching the wrong sequence. Each
+    leg's body is validated by the same checks its standalone track uses, so a
+    broken exploit inside a chain is caught exactly as one in the salvage
+    track would be.
+    """
+    b: ChainBody = s.body
+    if s.tier != 'verified':
+        err(f'{s.id}: a chain is verified, not {s.tier!r}')
+    tracks = tuple(st.track for st in b.stages)
+    if tracks != ('sift', 'salvage', 'conduit'):
+        err(f'{s.id}: stages are {tracks}, must be sift, salvage, conduit in '
+            'order')
+    if not b.brief.strip():
+        err(f'{s.id}: no engagement brief')
+    for st in b.stages:
+        if not st.bridge.strip():
+            warn(f'{s.id}: the {st.track} stage has no bridge text, so the '
+                 'engagement has no story between legs')
+        sub = Scenario(id=f'{s.id}:{st.track}', track=st.track,
+                       title=st.title or s.title,
+                       tier='graded' if st.track == 'sift' else 'verified',
+                       body=st.body, needs=st.needs, source=s.source)
+        # A leg inherits the chain's source and waypoint, so silence the
+        # per-scenario provenance warnings the standalone check would emit:
+        # the engagement is the unit of provenance, not each leg.
+        pre_warn = len(WARNINGS)
+        if isinstance(st.body, MarkBody):
+            check_mark_body(sub)
+        elif isinstance(st.body, SalvageBody):
+            check_salvage_body(sub)
+        elif isinstance(st.body, ConduitBody):
+            check_conduit_body(sub)
+        else:
+            err(f'{s.id}: the {st.track} stage body is a '
+                f'{type(st.body).__name__}, not the {st.track} engine body')
+        WARNINGS[:] = [w for w in WARNINGS
+                       if not (WARNINGS.index(w) >= pre_warn
+                               and 'no Waypoint node' in w
+                               and f'{s.id}:{st.track}' in w)]
 
 
 def check_scenario(s: Scenario) -> None:
-    if s.track not in TRACKS:
+    if s.track not in SECTIONS:
         err(f'{s.id}: unknown track {s.track!r}')
     if s.tier not in TIERS:
         err(f'{s.id}: unknown tier {s.tier!r}')
@@ -66,6 +113,8 @@ def check_scenario(s: Scenario) -> None:
         check_salvage_body(s)
     elif isinstance(s.body, ConduitBody):
         check_conduit_body(s)
+    elif isinstance(s.body, ChainBody):
+        check_chain_body(s)
     elif isinstance(s.body, StubBody):
         if s.tier != 'self':
             err(f'{s.id}: a stub must be self tier, not {s.tier!r} '
@@ -186,6 +235,67 @@ def check_conduit_runs(reg) -> None:
             if not want and r.ok:
                 err(f'{s.id}: the STARTER script already works, so the '
                     'scenario teaches nothing')
+
+
+def check_chain_runs(reg) -> None:
+    """Run each chain's salvage and conduit legs for real, like the standalone
+    tracks. A chain is only as trustworthy as its legs, and a leg that does
+    not land makes the engagement unwinnable at exactly the point a real box
+    would stop you."""
+    import subprocess
+    import tempfile
+
+    from crux.targets.mockhttp import MockHttp
+    from crux.targets.mocktcp import MockTcp
+    from crux.targets.netns import (capability, prepare_assets, run_attempt)
+
+    chains = [s for s in reg.scenarios if isinstance(s.body, ChainBody)]
+    if not chains:
+        return
+    ns_ok, _ = capability()
+    assets = None
+    for s in chains:
+        for st in s.body.stages:
+            if isinstance(st.body, SalvageBody):
+                b = st.body
+                target = (MockTcp(b.requirements, banner=b.banner)
+                          if b.kind == 'tcp'
+                          else MockHttp(b.requirements, route=b.route,
+                                        reject_code=b.reject_code,
+                                        reject_message=b.reject_message))
+                with target:
+                    work = Path(tempfile.mkdtemp(prefix='crux-chain-'))
+                    path = work / b.filename
+                    path.write_text(b.render(b.solution,
+                                             getattr(target, 'url', ''),
+                                             target.port))
+                    try:
+                        subprocess.run([sys.executable, str(path)],
+                                       cwd=str(work), capture_output=True,
+                                       timeout=30)
+                    except subprocess.TimeoutExpired:
+                        err(f'{s.id}: the salvage leg did not finish')
+                        continue
+                    if not target.verdict()[0]:
+                        err(f'{s.id}: the salvage leg solution does not land, '
+                            'so the engagement cannot be completed')
+            elif isinstance(st.body, ConduitBody):
+                if not ns_ok or missing_needs(
+                        Scenario(id='x', track='conduit', title='x', tier='verified',
+                                 body=st.body, needs=st.needs)):
+                    print(f'  note  {s.id} conduit leg not run')
+                    continue
+                if assets is None:
+                    assets = prepare_assets(
+                        Path(tempfile.mkdtemp(prefix='crux-chain-a-'))
+                        / 'assets')
+                work = Path(tempfile.mkdtemp(prefix='crux-chain-c-'))
+                path = work / st.body.filename
+                path.write_text(st.body.render(st.body.solution, str(assets)))
+                r = run_attempt(st.body.topology, path, assets, st.body.settle)
+                if not r.ok:
+                    err(f'{s.id}: the conduit leg solution does not open the '
+                        f'path ({r.detail or r.error})')
 
 
 def check_salvage_runs(reg) -> None:
@@ -504,6 +614,7 @@ def main() -> int:
     if '--fast' not in sys.argv:
         check_salvage_runs(reg)
         check_conduit_runs(reg)
+        check_chain_runs(reg)
     check_ascii_rung()
     check_content_ascii(reg)
     check_exit_chord(reg)
@@ -538,6 +649,11 @@ def main() -> int:
         if gated:
             line += f'; {gated} gated on a missing tool'
         print(line)
+    chains = [s for s in reg.scenarios if isinstance(s.body, ChainBody)]
+    if chains:
+        print(f'  chain     {len(chains)} engagement(s), '
+              f'{sum(len(c.body.stages) for c in chains)} stages, each a '
+              'real run of its track')
     salv = [s for s in reg.scenarios if isinstance(s.body, SalvageBody)]
     if salv:
         reqs = sum(len(s.body.requirements) for s in salv)

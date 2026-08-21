@@ -26,10 +26,11 @@ os.environ['XDG_DATA_HOME'] = str(_TMP)
 from crux import keys as K                                    # noqa: E402
 from crux import render as R                                  # noqa: E402
 from crux.clock import FakeClock, Stopwatch, fmt              # noqa: E402
-from crux.config import MIN_COLS, MIN_ROWS, TRACKS            # noqa: E402
+from crux.config import CHAIN, MIN_COLS, MIN_ROWS, SECTIONS, TRACKS  # noqa: E402
 from crux.loader import load                                  # noqa: E402
-from crux.model import (ConduitBody, ContentError, Line,  # noqa: E402
-                        MarkBody, SalvageBody, Scenario, roles)
+from crux.model import (ChainBody, ConduitBody, ContentError,  # noqa: E402
+                        Line, MarkBody, SalvageBody, Scenario,
+                        Stage, roles)
 from crux.scoring import DECOY_WEIGHT, band, score_marks      # noqa: E402
 from crux.screens import Screen                               # noqa: E402
 from crux.screens.help import HelpScreen                      # noqa: E402
@@ -229,13 +230,15 @@ def test_model_guards() -> None:
 def test_loader() -> None:
     reg = load()
     eq(reg.errors, [], 'content loads with no errors')
-    eq(sorted(reg.tracks), sorted(TRACKS), 'all tracks present')
+    eq(sorted(reg.tracks), sorted(SECTIONS),
+       'all sections present, the three tracks plus chain')
     ok(len(reg.scenarios) >= 3, 'at least one scenario per track')
     ok(reg.by_id('sift-nmap-pinned') is not None, 'lookup by id')
     ok(reg.by_id('nope') is None, 'unknown id returns None')
     ok(reg.track('sift').ready, 'sift has a real engine')
     ok(reg.track('salvage').ready, 'salvage has a real engine now')
     ok(reg.track('conduit').ready, 'conduit has a real engine now')
+    ok(len(reg.track('chain').scenarios) >= 1, 'chain mode has an engagement')
     ok(len(reg.track('sift').scenarios) >= 9, 'sift has real breadth')
     ok(reg.by_id('sift-smoke-nmap') is None,
        'Phase 0 scaffolding was deleted, not left beside real content')
@@ -691,6 +694,135 @@ def test_result_screens_scroll() -> None:
        'and is not offered a key that would do nothing')
 
 
+def test_chain_flow() -> None:
+    """Drive a whole engagement: sift the lead, salvage the exploit, pivot.
+
+    This is chain mode's reason to exist, so it is verified the way it will be
+    played: one continuous flow through the three real engines, ending on a
+    recorded engagement. The conduit leg is skipped where namespaces are
+    unavailable, the same honest degradation the standalone track uses.
+    """
+    from crux.screens.chain import (BridgeScreen, Chain, ChainIntroScreen,
+                                    ChainResultScreen)
+    from crux.targets import netns
+
+    session = Session.open(clock=FakeClock(), read_only=True)
+    sc = session.registry.by_id('chain-wexler')
+    ok(isinstance(sc.body, ChainBody), 'the engagement is a ChainBody')
+    eq(tuple(st.track for st in sc.body.stages), ('sift', 'salvage', 'conduit'),
+       'the stages are the three tracks in engagement order')
+
+    caps = all_caps()[0]
+    intro = ChainIntroScreen(session, sc)
+    ok(bool(intro.render(caps)), 'the intro renders')
+    start = intro.handle(K.parse('RET'))
+    eq(type(start.screen).__name__, 'MarkScreen', 'begin opens the sift stage')
+
+    chain_obj = None
+
+    # Stage 1: sift, played correctly.
+    s1 = start.screen
+    chain_ref = getattr(s1, 'on_done')
+    lead = next(i for i, l in enumerate(s1.lines) if l.kind == 'lead')
+    for _ in range(lead):
+        s1.handle(K.parse('Down'))
+    s1.handle(K.parse('SPC'))
+    act = s1.handle(K.parse('RET')).screen
+    eq(type(act).__name__, 'ActScreen', 'submitting the marks reaches the act beat')
+    correct = next(i for i, a in enumerate(act.body_data.actions) if a.correct)
+    for _ in range(correct):
+        act.handle(K.parse('Down'))
+    bridge1 = act.handle(K.parse('RET')).screen
+    ok(isinstance(bridge1, BridgeScreen), 'a finished sift stage bridges on')
+    eq(bridge1.stage.track, 'salvage', 'and the next stage is salvage')
+    ok(bool(bridge1.render(caps)), 'the bridge renders')
+    before = len(session.state.attempts)
+    ok(before == 0, 'a chain stage does not record a standalone attempt')
+
+    # Stage 2: salvage, fixed and landed.
+    s2 = bridge1.handle(K.parse('RET')).screen
+    eq(type(s2).__name__, 'SalvageScreen', 'the bridge opens the salvage stage')
+    ok(s2.error == '', 'the salvage target opened inside the chain')
+    s2.path.write_text(s2.body_data.render(s2.body_data.solution, s2.url, 0))
+    bridge2 = s2.handle(K.parse('r')).screen
+    ok(isinstance(bridge2, BridgeScreen), 'landing the exploit bridges on')
+    eq(bridge2.stage.track, 'conduit', 'and the last stage is conduit')
+
+    # Stage 3: conduit, if the kernel allows it.
+    s3 = bridge2.handle(K.parse('RET')).screen
+    eq(type(s3).__name__, 'ConduitScreen', 'the bridge opens the conduit stage')
+    if s3.usable:
+        s3.path.write_text(s3.body_data.render(s3.body_data.solution,
+                                              str(s3.assets)))
+        res = s3.handle(K.parse('r')).screen
+    else:
+        res = s3.handle(K.parse('RET')).screen   # skip an unverifiable leg
+    ok(isinstance(res, ChainResultScreen), 'the last stage reaches the result')
+    ok(bool(res.render(caps)), 'the engagement result renders')
+
+    chain_attempts = [a for a in session.state.attempts if a.track == 'chain']
+    eq(len(chain_attempts), 1, 'exactly one engagement attempt was recorded')
+    eq(chain_attempts[0].scenario, 'chain-wexler', 'under the chain id')
+    if s3.usable:
+        eq(res.chain.passed, 3, 'a clean run passes all three stages')
+        eq(chain_attempts[0].total, 100.0, 'and scores 100')
+    ok('rooted' in ''.join(r.plain() for r in res.render(caps))
+       or f'{res.chain.passed} of 3' in ''.join(r.plain()
+                                                for r in res.render(caps)),
+       'the result names how much of the box fell')
+
+
+def test_chain_partial() -> None:
+    """A stumble does not end the engagement, and the result is honest about it.
+
+    Play the sift stage badly and the salvage stage by giving up, and the chain
+    must still carry through to conduit and report which stages actually fell.
+    """
+    from crux.screens.chain import BridgeScreen, ChainIntroScreen
+
+    session = Session.open(clock=FakeClock(), read_only=True)
+    sc = session.registry.by_id('chain-wexler')
+    intro = ChainIntroScreen(session, sc)
+    s1 = intro.handle(K.parse('RET')).screen
+
+    # Submit the sift stage marking nothing, then pick a wrong action.
+    act = s1.handle(K.parse('RET')).screen
+    wrong = next(i for i, a in enumerate(act.body_data.actions)
+                 if not a.correct)
+    for _ in range(wrong):
+        act.handle(K.parse('Down'))
+    bridge1 = act.handle(K.parse('RET')).screen
+    ok(isinstance(bridge1, BridgeScreen),
+       'a fumbled sift stage still bridges on rather than blocking')
+
+    # Salvage: give up without landing.
+    s2 = bridge1.handle(K.parse('RET')).screen
+    s2.runs = 1                              # enable give-up
+    nxt = s2.handle(K.parse('g'))
+    ok(nxt.kind == 'replace', 'giving up on the exploit advances the chain')
+    ok(isinstance(nxt.screen, BridgeScreen) or
+       type(nxt.screen).__name__ == 'ChainResultScreen',
+       'to the pivot or the result, never a dead end')
+
+
+def test_home_shows_chain() -> None:
+    """The picker sets the capstone apart from the three skill tracks."""
+    from crux.screens.home import HomeScreen
+    session = Session.open(clock=FakeClock(), read_only=True)
+    home = HomeScreen(session)
+    caps = all_caps()[0]
+    eq(home.count(), 4, 'three tracks and the chain capstone')
+    shown = ''.join(r.plain() for r in home.render(caps))
+    ok('chain' in shown, 'chain is on the picker')
+    ok('capstone' in shown, 'and marked as the capstone')
+    # Selecting the fourth row opens the chain track.
+    from crux.screens.track import TrackScreen
+    home.cursor = 3
+    opened = home.activate(3)
+    eq(type(opened.screen).__name__, 'TrackScreen', 'and it opens')
+    eq(opened.screen.track_name, 'chain', 'to the chain section')
+
+
 def test_conduit_engine() -> None:
     """The namespace engine, including the honest degradation of crux D14."""
     import tempfile
@@ -1012,6 +1144,7 @@ def main() -> int:
                test_length_framing, test_hostile_capstone,
                test_result_screens_scroll, test_conduit_engine,
                test_conduit_end_to_end, test_all_conduit_solutions,
+               test_chain_flow, test_chain_partial, test_home_shows_chain,
                test_screens_render, test_screen_contract, test_walkthrough,
                test_stub_records_nothing, test_session_persists, test_panning):
         fn()

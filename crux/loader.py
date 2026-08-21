@@ -18,7 +18,7 @@ import importlib
 import pkgutil
 from dataclasses import dataclass, field
 
-from .config import TRACK_BLURB, TRACKS
+from .config import SECTIONS, TRACK_BLURB, TRACKS
 from .model import ContentError, Scenario, Track
 
 CONTENT_PACKAGE = 'crux.content'
@@ -32,7 +32,7 @@ class Registry:
     @property
     def scenarios(self) -> list[Scenario]:
         out: list[Scenario] = []
-        for name in TRACKS:
+        for name in SECTIONS:
             out.extend(self.tracks[name].scenarios)
         return out
 
@@ -84,7 +84,7 @@ def _load_track(name: str, errors: list[str]) -> Track:
 def load() -> Registry:
     """Load every track. Never raises: errors are collected and reported."""
     reg = Registry()
-    for name in TRACKS:
+    for name in SECTIONS:
         reg.tracks[name] = _load_track(name, reg.errors)
 
     seen: dict[str, str] = {}

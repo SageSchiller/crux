@@ -8,7 +8,7 @@ of crux D6: never let the student guess which parts are real.
 
 from __future__ import annotations
 
-from ..config import APP_TITLE, TAGLINE_PARTS, TRACKS
+from ..config import APP_TITLE, CHAIN, SECTIONS, TAGLINE_PARTS, TRACKS
 from ..render import Caps, Text, line
 from ..session import Session
 from . import ListScreen, Screen, push, selector
@@ -29,7 +29,14 @@ class HomeScreen(ListScreen):
         return f'{n} attempt{"" if n == 1 else "s"}' if n else ''
 
     def count(self) -> int:
-        return len(TRACKS)
+        # The three skill tracks, plus chain when it has content.
+        return len(TRACKS) + (1 if self._chain_ready() else 0)
+
+    def _chain_ready(self) -> bool:
+        return bool(self.session.registry.track(CHAIN).scenarios)
+
+    def _row_track(self, index: int) -> str:
+        return SECTIONS[index] if index < len(SECTIONS) else CHAIN
 
     def header_rows(self, caps: Caps) -> list[Text]:
         p = caps.palette
@@ -48,18 +55,24 @@ class HomeScreen(ListScreen):
     def rows(self, caps: Caps) -> list[Text]:
         p = caps.palette
         out: list[Text] = []
-        for i, name in enumerate(TRACKS):
+        names = list(TRACKS) + ([CHAIN] if self._chain_ready() else [])
+        for i, name in enumerate(names):
             track = self.session.registry.track(name)
             sel = i == self.cursor
             t = selector(caps, sel)
-            t.add(f'{name:<9}', p.accent if sel else p.fg, bold=sel)
+            colour = p.accent2 if name == CHAIN else (p.accent if sel else p.fg)
+            t.add(f'{name:<9}', colour, bold=sel or name == CHAIN)
             t.add(track.blurb, p.muted)
             out.append(t)
 
             done, mean = self.session.state.track_summary(name)
             total = len(track.scenarios)
             d = Text().add('     ')
-            if not track.ready:
+            if name == CHAIN:
+                d.add('the capstone: uses all three', p.dim)
+                if done:
+                    d.add(f'   {done}/{total} run', p.dim)
+            elif not track.ready:
                 d.add('engine not built yet', p.warn)
             elif done:
                 d.add(f'{done}/{total} attempted', p.dim)
@@ -71,8 +84,7 @@ class HomeScreen(ListScreen):
         return out
 
     def activate(self, index: int) -> object:
-        name = TRACKS[index]
-        return push(TrackScreen(self.session, name))
+        return push(TrackScreen(self.session, self._row_track(index)))
 
     def extra_hints(self) -> list[tuple[str, str]]:
         return [('e', 'errors')] if self.session.registry.errors else []

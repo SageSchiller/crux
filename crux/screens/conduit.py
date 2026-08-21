@@ -47,9 +47,11 @@ def _editor() -> list[str]:
 
 
 class ConduitScreen(Screen):
-    def __init__(self, session: Session, scenario: Scenario) -> None:
+    def __init__(self, session: Session, scenario: Scenario,
+                 on_done=None) -> None:
         self.session = session
         self.scenario = scenario
+        self.on_done = on_done
         self.body_data: ConduitBody = scenario.body
         self.watch = Stopwatch(session.clock)
         self.watch.start()
@@ -147,6 +149,8 @@ class ConduitScreen(Screen):
         detail = (r.detail or r.error) if r else 'not run'
         score = score_run(ok, r.met if r else 0, r.total if r else 0, detail,
                           self.runs, None, self.watch.elapsed())
+        if self.on_done is not None:
+            return self.on_done(score)
         self.session.record_run(self.scenario, score)
         from .conduitresult import ConduitResultScreen
         return replace(ConduitResultScreen(self.session, self.scenario, score,
@@ -204,12 +208,23 @@ class ConduitScreen(Screen):
 
     def hints(self, caps: Caps) -> list[tuple[str, str]]:
         if not self.usable:
-            return [('esc', 'back'), ('H', 'home'), ('q', 'quit'), ('?', 'help')]
+            base = ([('ret', 'skip this leg')] if self.on_done is not None
+                    else [])
+            return base + [('esc', 'back'), ('H', 'home'), ('q', 'quit'),
+                           ('?', 'help')]
         return [('e', 'edit'), ('r', 'build and run'), ('g', 'give up'),
                 ('esc', 'back'), ('H', 'home'), ('q', 'quit'), ('?', 'help')]
 
     def handle(self, key):
         if not self.usable or self.error:
+            # In a chain, an unverifiable conduit leg must not be a dead end:
+            # let the engagement continue with an honestly-skipped score
+            # rather than trapping the student on a screen with no run key.
+            if self.on_done is not None and key.name in ('RET', 'g'):
+                from ..scoring import score_run
+                return self.on_done(score_run(
+                    False, 0, 1, 'skipped: namespaces unavailable here', 0,
+                    None, self.watch.elapsed()))
             return super().handle(key)
         if key.name == 'e' and not key.ctrl:
             return self._edit()
