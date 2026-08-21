@@ -149,6 +149,14 @@ def run(argv: list[str] | None = None) -> int:
         show_splash = not args.no_splash and not T.too_small()
         if show_splash:
             SP.play(tty, splash_caps, note=SP.scope_note(session.registry))
+        # Repaint in place, and only when the frame actually changed. The old
+        # loop erased the whole screen (\x1b[2J) and redrew on every pass,
+        # including the twice-a-second idle pass on the read timeout, which
+        # read as a flicker while you were just looking at a menu. Home the
+        # cursor, overwrite, and clear below instead: an unchanged frame is
+        # not rewritten at all, and a changed one is drawn over the last one
+        # without a blanking flash.
+        last_paint = None
         try:
             while stack:
                 cols, rows = T.size()
@@ -159,7 +167,16 @@ def run(argv: list[str] | None = None) -> int:
                     out = _too_small(caps)
                 else:
                     out = R.render_lines(caps, screen.render(caps))
-                tty.write(T.CLEAR + out)
+                token = (cols, rows, out)
+                if token != last_paint:
+                    # Erase each line to its end before its newline and erase
+                    # below the last line, so a shorter frame leaves nothing
+                    # of the taller one behind. No full-screen erase, so no
+                    # flash.
+                    painted = ('\x1b[H' + out.replace('\n', '\x1b[K\n')
+                               + '\x1b[K\x1b[J')
+                    tty.write(painted)
+                    last_paint = token
 
                 keys = tty.read_keys(timeout=0.5)
                 if not keys:
