@@ -706,7 +706,14 @@ def test_conduit_engine() -> None:
     reg = load()
     conduits = [s for s in reg.track('conduit').scenarios
                 if isinstance(s.body, ConduitBody)]
-    ok(len(conduits) >= 2, f'{len(conduits)} conduit scenarios')
+    ok(len(conduits) >= 7, f'{len(conduits)} conduit scenarios')
+    # The whole point of the track is topology variety, not one shape reused.
+    shapes = {(len(sc.body.topology.hosts), len(sc.body.topology.links))
+              for sc in conduits}
+    ok(len(shapes) >= 3, 'the topologies genuinely differ in shape')
+    socks = [sc for sc in conduits
+             if any(pr.socks for pr in sc.body.topology.probes)]
+    ok(bool(socks), 'at least one scenario verifies through a SOCKS proxy')
     for sc in conduits:
         b = sc.body
         eq(sc.tier, 'verified', f'{sc.id}: conduit is verified')
@@ -726,6 +733,28 @@ def test_conduit_engine() -> None:
     netns.prepare_assets(assets)
     eq((assets / 'id').read_bytes(), before,
        'and does not regenerate a key a student has already referenced')
+
+    # A needs-gated scenario is intercepted before the engine screen: it names
+    # the missing tool and scores nothing, rather than trying to build a
+    # topology that cannot run.
+    from crux.model import missing_needs
+    from crux.screens.track import NeedsScreen
+    gated = [sc for sc in conduits if sc.needs]
+    ok(bool(gated), 'some conduit scenarios declare tool needs')
+    gsession = Session.open(clock=FakeClock(), read_only=True)
+    chisel = load().by_id('conduit-agent')
+    if 'chisel' in missing_needs(chisel):
+        ns = NeedsScreen(gsession, chisel, missing_needs(chisel))
+        caps0 = all_caps()[0]
+        shown = ''.join(r.plain() for r in ns.render(caps0))
+        ok('chisel' in shown, 'the needs screen names the missing tool')
+        ok('not scored' in shown or 'Nothing here is scored' in shown,
+           'and scores nothing')
+        before = len(gsession.state.attempts)
+        for chord in ('r', 'e', 'RET'):
+            ns.handle(K.parse(chord))
+        eq(len(gsession.state.attempts), before,
+           'a needs-gated scenario records nothing')
 
     # crux D14: with namespaces unavailable, the screen says so and scores
     # nothing rather than pretending.
@@ -750,6 +779,40 @@ def test_conduit_engine() -> None:
         scr.close()
     finally:
         cs.capability = real
+
+
+def test_all_conduit_solutions() -> None:
+    """Every buildable conduit solution opens its path; every starter fails.
+
+    This is the run check from `validate.py`, in `test.py` so a green test run
+    means the whole track is solvable and honestly broken, not only the two
+    scenarios the end-to-end test drives. Gated and unavailable scenarios are
+    skipped, not failed.
+    """
+    import tempfile
+
+    from crux.model import missing_needs
+    from crux.targets import netns
+
+    usable, why = netns.capability()
+    if not usable:
+        ok(True, f'conduit solutions skipped: {why}')
+        return
+
+    conduits = [s for s in load().track('conduit').scenarios
+                if isinstance(s.body, ConduitBody) and not missing_needs(s)]
+    work = Path(tempfile.mkdtemp(prefix='crux-test-allcond-'))
+    assets = netns.prepare_assets(work / 'assets')
+    for sc in conduits:
+        b = sc.body
+        path = work / b.filename
+        path.write_text(b.render(b.solution, str(assets)))
+        good = netns.run_attempt(b.topology, path, assets, b.settle)
+        ok(good.ok, f'{sc.id}: solution opens the path '
+                    f'({good.detail or good.error})')
+        path.write_text(b.render(b.starter, str(assets)))
+        bad = netns.run_attempt(b.topology, path, assets, b.settle)
+        ok(not bad.ok, f'{sc.id}: the starter does not')
 
 
 def test_conduit_end_to_end() -> None:
@@ -948,7 +1011,7 @@ def main() -> int:
                test_mock_targets, test_salvage_content, test_salvage_screen,
                test_length_framing, test_hostile_capstone,
                test_result_screens_scroll, test_conduit_engine,
-               test_conduit_end_to_end,
+               test_conduit_end_to_end, test_all_conduit_solutions,
                test_screens_render, test_screen_contract, test_walkthrough,
                test_stub_records_nothing, test_session_persists, test_panning):
         fn()

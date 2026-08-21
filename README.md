@@ -27,15 +27,13 @@ Python 3, standard library only. No pip, no network, ever.
 
 ## Status
 
-**Phase 5 complete: all three tracks run.** Twenty-six `sift` scenarios across
-seven families, ten `salvage` scenarios one per defect class, and `conduit`
-building real multi-hop networks out of unprivileged namespaces with a real
-`sshd` on the pivot. No sudo, ever.
+**Phase 6 complete: all three tracks are built out.** Twenty-six `sift`
+scenarios across seven families, ten `salvage` scenarios one per defect class,
+and seven `conduit` topologies from a single local forward to a chisel agent,
+each one building a real network and verifying the path through it.
 
-Where a kernel will not allow unprivileged user namespaces, `conduit` says so
-on screen and scores nothing rather than pretending to verify.
-
-See `CRUX-PLAN.md`, which is the file to read first.
+Only chain mode remains: one scenario carried through all three tracks. See
+`CRUX-PLAN.md`, which is the file to read first.
 
 ## After any change
 

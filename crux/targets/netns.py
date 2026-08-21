@@ -50,6 +50,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -87,13 +88,22 @@ class Service:
 
 @dataclass(frozen=True, slots=True)
 class Probe:
-    """What must be reachable from where for the attempt to have worked."""
+    """What must be reachable from where for the attempt to have worked.
+
+    `socks` makes the probe go through a SOCKS5 proxy instead of connecting
+    directly, which is the only way to verify a dynamic forward. It is spoken
+    in twenty lines of stdlib rather than shelled out to `proxychains`,
+    because what has to be proved is that **the proxy works**, and borrowing a
+    third-party client to prove it would add a dependency and a second thing
+    that can be at fault.
+    """
 
     frm: str
     addr: str
     port: int
     expect: str
     name: str = ''
+    socks: tuple[str, int] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +112,10 @@ class Topology:
     links: tuple[Link, ...]
     services: tuple[Service, ...] = ()
     sshd_on: tuple[str, ...] = ()
+    #: Extra `sshd_config` lines for this topology only. Exists so a scenario
+    #: can turn forwarding off, which is a real thing to run into and cannot
+    #: be taught with a config every scenario shares.
+    sshd_extra: tuple[str, ...] = ()
     routes: tuple[tuple[str, str, str], ...] = ()   # (host, dest, via)
     probes: tuple[Probe, ...] = ()
     #: Probes that must FAIL before the tunnel exists. Asserted on every run,
@@ -115,10 +129,13 @@ class Topology:
             'links': [[l.a, l.b, l.net] for l in self.links],
             'services': [[s.host, s.addr, s.port, s.flag] for s in self.services],
             'sshd_on': list(self.sshd_on),
+            'sshd_extra': list(self.sshd_extra),
             'routes': [list(r) for r in self.routes],
-            'probes': [[p.frm, p.addr, p.port, p.expect, p.name]
+            'probes': [[p.frm, p.addr, p.port, p.expect, p.name,
+                        list(p.socks) if p.socks else None]
                        for p in self.probes],
-            'negative': [[p.frm, p.addr, p.port, p.expect, p.name]
+            'negative': [[p.frm, p.addr, p.port, p.expect, p.name,
+                          list(p.socks) if p.socks else None]
                          for p in self.negative],
             'script': script,
             'assets': assets,
@@ -328,15 +345,65 @@ def _hold() -> subprocess.Popen:
     return p
 
 
-def _probe(pid: int | None, addr: str, port: int, expect: str) -> tuple[bool, str]:
-    code = (
-        'import socket,sys\n'
-        f'try:\n c=socket.create_connection(("{addr}",{port}),timeout=4)\n'
-        ' d=c.recv(200).decode("utf-8","replace").strip()\n c.close()\n'
-        ' print(d)\n'
-        'except OSError as e:\n print("ERR "+e.__class__.__name__)\n'
-    )
-    r = _ns(pid, sys.executable, '-c', code, check=False)
+_DIRECT = '''import socket
+try:
+    c = socket.create_connection((ADDR, PORT), timeout=4)
+    print(c.recv(200).decode("utf-8", "replace").strip())
+    c.close()
+except OSError as e:
+    print("ERR " + e.__class__.__name__)
+'''
+
+#: A SOCKS5 CONNECT, by hand. Greeting with "no authentication", then a
+#: request carrying the destination as a literal address.
+_VIA_SOCKS = r"""import socket
+GREET = bytes([5, 1, 0])
+OKGREET = bytes([5, 0])
+def connect():
+    c = socket.create_connection((SHOST, SPORT), timeout=4)
+    c.sendall(GREET)
+    if c.recv(2) != OKGREET:
+        print("ERR socks-greeting"); return
+    host = ADDR.encode()
+    req = bytes([5, 1, 0, 3, len(host)]) + host + bytes([PORT >> 8, PORT & 0xFF])
+    c.sendall(req)
+    reply = c.recv(4)
+    if len(reply) < 2 or reply[1] != 0:
+        print("ERR socks-refused-%d" % (reply[1] if len(reply) > 1 else -1)); return
+    n = 4 if reply[3] == 1 else (16 if reply[3] == 4 else c.recv(1)[0])
+    c.recv(n); c.recv(2)                      # bound addr and port, discarded
+    print(c.recv(200).decode("utf-8", "replace").strip())
+    c.close()
+try:
+    connect()
+except OSError as e:
+    print("ERR " + e.__class__.__name__)
+"""
+
+_PROBE_DIR = Path(os.environ.get('TMPDIR', '/tmp'))
+
+
+def _probe(pid: int | None, addr: str, port: int, expect: str,
+           socks: tuple[str, int] | None = None) -> tuple[bool, str]:
+    if socks:
+        code = (f'ADDR={addr!r}\nPORT={port}\nSHOST={socks[0]!r}\n'
+                f'SPORT={socks[1]}\n' + _VIA_SOCKS)
+    else:
+        code = f'ADDR={addr!r}\nPORT={port}\n' + _DIRECT
+    # Written to a file, not passed with `-c`: the SOCKS request contains NUL
+    # bytes, and an argv cannot carry a NUL. The probe body itself is pure
+    # ASCII (the NULs are built at runtime from hex escapes), so the file is
+    # safe; the argument would not have been.
+    fd, name = tempfile.mkstemp(suffix='.py', dir=str(_PROBE_DIR))
+    try:
+        with os.fdopen(fd, 'w') as fh:
+            fh.write(code)
+        r = _ns(pid, sys.executable, name, check=False)
+    finally:
+        try:
+            os.unlink(name)
+        except OSError:
+            pass
     got = r.stdout.strip()
     return (expect in got), got
 
@@ -352,6 +419,14 @@ def main() -> int:
         # Make sshd possible: its privsep dir, and an account database that
         # does not depend on whoever is running crux.
         sshd = sshd_path()
+        # Per scenario, never appended to the shared asset: the assets
+        # directory outlives a run, so appending there would leave one
+        # scenario's `AllowTcpForwarding no` switched on for the next one.
+        sshd_cfg = assets / 'sshd_config'
+        if spec.get('sshd_extra'):
+            sshd_cfg = Path(spec['script']).parent / 'sshd_config.run'
+            sshd_cfg.write_text((assets / 'sshd_config').read_text() + '\n'
+                                + '\n'.join(spec['sshd_extra']) + '\n')
         if spec['sshd_on'] and sshd:
             _sh(f'mount --bind {assets}/empty /usr/share/empty.sshd')
             for f in ('passwd', 'group', 'shadow'):
@@ -403,15 +478,16 @@ def main() -> int:
             procs.append(subprocess.Popen(
                 (['nsenter', f'--net=/proc/{pids[host]}/ns/net']
                  if pids[host] else [])
-                + [sshd, '-D', '-e', '-f', str(assets / 'sshd_config')],
+                + [sshd, '-D', '-e', '-f', str(sshd_cfg)],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
         time.sleep(1.2)
 
         # Negatives first: prove the target really is out of reach before the
         # student does anything, so a scenario that was solvable by accident
         # cannot ship.
-        for frm, addr, port, expect, name in spec['negative']:
-            hit, got = _probe(pids[frm], addr, port, expect)
+        for frm, addr, port, expect, name, socks in spec['negative']:
+            hit, got = _probe(pids[frm], addr, port, expect,
+                              tuple(socks) if socks else None)
             if hit:
                 out['error'] = (f'{addr}:{port} was reachable from {frm} '
                                 'before any tunnel existed')
@@ -442,8 +518,9 @@ def main() -> int:
             time.sleep(float(spec.get('settle', 2.0)))
 
         results = []
-        for frm, addr, port, expect, name in spec['probes']:
-            hit, got = _probe(pids[frm], addr, port, expect)
+        for frm, addr, port, expect, name, socks in spec['probes']:
+            hit, got = _probe(pids[frm], addr, port, expect,
+                              tuple(socks) if socks else None)
             results.append({'name': name or f'{addr}:{port}', 'from': frm,
                             'addr': addr, 'port': port, 'ok': hit, 'got': got})
         out['probes'] = results

@@ -21,7 +21,7 @@ from crux import render as R
 from crux.config import EXIT_CHORD, TIERS, TRACKS, vault_dir
 from crux.loader import load
 from crux.model import (LINE_KINDS, ConduitBody, MarkBody, SalvageBody,
-                        Scenario, StubBody, roles)
+                        Scenario, StubBody, missing_needs, roles)
 from crux.scoring import DECOY_WEIGHT, score_marks
 from crux.screens import Screen
 from crux.version import VERSION
@@ -166,6 +166,10 @@ def check_conduit_runs(reg) -> None:
     work = Path(tempfile.mkdtemp(prefix='crux-validate-conduit-'))
     assets = prepare_assets(work / 'assets')
     for s in conduits:
+        miss = missing_needs(s)
+        if miss:
+            print(f'  note  {s.id} not run: needs {", ".join(miss)}')
+            continue
         b: ConduitBody = s.body
         for label, src, want in (('solution', b.solution, True),
                                  ('starter', b.starter, False)):
@@ -527,9 +531,13 @@ def main() -> int:
         hops = sum(len(s.body.topology.links) for s in cond)
         probes = sum(len(s.body.topology.probes) for s in cond)
         usable, why = _NS_OK
-        print(f'  conduit   {len(cond)} topologies, {hops} link(s), '
-              f'{probes} probe(s); namespaces '
-              + ('usable here' if usable else f'UNAVAILABLE ({why})'))
+        gated = sum(1 for s in cond if missing_needs(s))
+        line = (f'  conduit   {len(cond)} topologies, {hops} link(s), '
+                f'{probes} probe(s); namespaces '
+                + ('usable here' if usable else f'UNAVAILABLE ({why})'))
+        if gated:
+            line += f'; {gated} gated on a missing tool'
+        print(line)
     salv = [s for s in reg.scenarios if isinstance(s.body, SalvageBody)]
     if salv:
         reqs = sum(len(s.body.requirements) for s in salv)

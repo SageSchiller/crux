@@ -223,6 +223,26 @@ class Scenario:
             raise ContentError(f'bad scenario id {self.id!r}')
 
 
+def missing_needs(scenario: Scenario) -> tuple[str, ...]:
+    """Binaries a scenario names in `needs` that are not on PATH.
+
+    A scenario with an unmet need is not broken and not a failure: it is a
+    tool you have not installed. The UI greys it and says which binary is
+    missing, the same way hone handles a module whose real tool is absent.
+    `sshd` is special-cased to the two places it hides off a normal PATH.
+    """
+    import shutil
+    out = []
+    for tool in scenario.needs:
+        if shutil.which(tool):
+            continue
+        if tool == 'sshd' and any(__import__('os').path.exists(c)
+                                  for c in ('/usr/sbin/sshd', '/usr/bin/sshd')):
+            continue
+        out.append(tool)
+    return tuple(out)
+
+
 @dataclass
 class Track:
     """A track and the scenarios loaded into it."""
