@@ -1068,14 +1068,17 @@ def test_splash() -> None:
        == last, 'the locked frame is stable, not random, while held')
     ok('locked' in last and 'scanning' in first,
        'the status reads scanning while acquiring and locked at the end')
-    peak = SP.frame(caps, SP.STEPS - 1)
-    fill = '\u2588'
-    top_bars = [r.plain().count(fill) for r in peak if fill in r.plain()]
-    ok(top_bars == sorted(top_bars),
-       'the locked spectrum is a peak: narrow at the top, wide at the base')
-    joined = ''.join(r.plain() for r in peak)
-    ok(all(letter in joined for letter in 'CRUX'),
-       'the wordmark is present under the scope')
+    # The locked frame is the whole wordmark: every bold-art line is present.
+    locked = [r.plain() for r in SP.frame(caps, SP.STEPS - 1)]
+    for art_line in SP.WORD_BOLD:
+        ok(any(art_line in r for r in locked),
+           'the locked frame renders the full CRUX wordmark')
+    # The sweep is directional: the left of the word locks before the right.
+    early = SP.frame(caps, 3)
+    left = sum(r.plain()[:len(r.plain()) // 2].count('\u2588') for r in early)
+    right = sum(r.plain()[len(r.plain()) // 2:].count('\u2588') for r in early)
+    ok(left > right,
+       'early in the sweep the left of the word is more resolved than the right')
 
     # It degrades: too small to fit means it does not play at all.
     ok(SP.fits(caps), 'a big enough window fits the splash')

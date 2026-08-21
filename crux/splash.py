@@ -1,123 +1,126 @@
-"""The launch and exit sequences: a signal locking out of noise.
+"""The launch and exit sequences: CRUX scanning into a lock.
 
-**Deliberately not hone's splash.** hone opens on one giant block wordmark that
-dissolves in and out of random grit. crux opens on a **signal scope**: a
-spectrum where a sharp peak climbs out of a noise floor and locks, which is the
-app's own thesis made into its front door, because finding the one signal in a
-screen of noise is exactly what `sift` trains and what the other two tracks pay
-off. The wordmark is a compact letter-spaced label beneath the scope, not the
-hero. Nothing here shares a silhouette with hone.
+**Its own look, not hone's.** hone opens on a block wordmark that melts in and
+out of random grit over the whole field at once. crux opens on a **scan-lock**:
+a bright column sweeps left to right across a bold `CRUX`, and the letters snap
+into focus behind the sweep while noise flickers ahead of it, until the whole
+word locks. It is the app's signal-from-noise thesis turned into a directional
+reveal, and it shares neither the font nor the mechanic with hone.
 
-The engineering is still the careful kind an entrance needs: every write is
-guarded so a splash can never be the thing that fails a launch, it degrades on
-every rung (no TTY, a small window, `--no-splash`, or the ASCII rung all fall
-back rather than print tofu), and a keypress skips it without skipping the app.
-It holds for a key on the way in and names its own exit; the way out it just
+The engineering is the careful kind an entrance needs: every write is guarded
+so a splash can never be the thing that fails a launch, it degrades on every
+rung (no TTY, a small window, `--no-splash`, or the ASCII rung all fall back
+rather than print tofu), and a keypress skips it without skipping the app. It
+holds for a key on the way in and names its own exit; the way out it just
 plays, because leaving has already been decided.
 """
 
 from __future__ import annotations
 
-import math
 import random
 
 from .config import APP_TITLE, TAGLINE_PARTS
 from .render import Caps, GlyphLevel, Text, render_lines, text_width
 
-#: Scope geometry. The spectrum is HEIGHT bars tall; the frame adds a row above
-#: and below. Interior width is chosen from the terminal, clamped to this band.
-HEIGHT = 6
-WIDTH_MIN = 26
-WIDTH_MAX = 46
+#: Bold, flat block CRUX (no drop shadow, so it does not read as hone). 54x7.
+WORD_BOLD = [
+    '    ████████  ██████████    ████    ████  ████    ████',
+    '  ████        ████    ████  ████    ████  ████    ████',
+    '  ████        ████    ████  ████    ████    ████████  ',
+    '  ████        ██████████    ████    ████      ████    ',
+    '  ████        ████  ████    ████    ████    ████████  ',
+    '  ████        ████    ████  ████    ████  ████    ████',
+    '    ████████  ████    ████    ████████    ████    ████',
+]
 
-STEPS = 9
-FRAME_SECONDS = 0.06
+#: A compact pure-ASCII CRUX for narrow windows and the ASCII glyph rung. 27x5.
+WORD_ASCII = [
+    ' ___ ___ _   _ _   _',
+    '/ __| _ \\ | | |_| |_|',
+    '| (_|   / |_| |>  <',
+    ' \\___|_|_\\\\___//_/\\_\\',
+    '',
+]
+
+#: What flickers ahead of the sweep, and what the letters lock out of.
+NOISE_BLOCK = '░▒▓'
+NOISE_ASCII = '.:+'
+
+STEPS = 13
+FRAME_SECONDS = 0.055
 MIN_SECONDS = 0.45
-HOLD_HINT = 'press any key'
+HOLD_HINT = 'press any key to begin'
 
-OUT_STEPS = 8
-OUT_FRAME_SECONDS = 0.06
+OUT_STEPS = 10
+OUT_FRAME_SECONDS = 0.05
 OUT_HOLD_SECONDS = 0.6
 
 HOLD_EMPTY_READS = 64
 
-#: Never draw into a window the scope does not fit. The scope box, a gap, the
-#: wordmark, the tagline, the note and the hint with a margin top and bottom.
-MIN_COLS = WIDTH_MIN + 4
-MIN_ROWS = HEIGHT + 8
+MIN_COLS = 30
+MIN_ROWS = 13
 
 
 def fits(caps: Caps) -> bool:
     return caps.cols >= MIN_COLS and caps.rows >= MIN_ROWS
 
 
-def _width(caps: Caps) -> int:
-    return max(WIDTH_MIN, min(WIDTH_MAX, caps.cols - 8))
+def _art(caps: Caps):
+    """(rows, noise glyphs, scan glyph) for the widest wordmark that fits."""
+    if caps.glyphs != GlyphLevel.ASCII and caps.cols >= len(WORD_BOLD[0]) + 4:
+        return WORD_BOLD, NOISE_BLOCK, '█'
+    return [r for r in WORD_ASCII], NOISE_ASCII, '|'
 
 
-def _bars(caps: Caps) -> str:
-    """The fill glyph for the spectrum, top to bottom of a cell's worth."""
-    return '#' if caps.glyphs == GlyphLevel.ASCII else '█'
+def _reveal(line: str, cut: int, edge: int, noise: str, scan: str,
+            rng) -> list[tuple[str, int]]:
+    """One art line as (char, role) pairs for a sweep at column `cut`.
 
-
-def _heights(w: int, progress: float, rng) -> list[int]:
-    """One integer 0..HEIGHT per column: a peak rising as the noise falls.
-
-    At progress 0 it is all noise floor; at progress 1 the noise is gone and a
-    clean symmetric spike stands at the centre. In between they cross, which is
-    the signal emerging: the whole animation in one line of arithmetic.
+    role 0 = revealed letter, 1 = the bright scan edge, 2 = noise ahead,
+    -1 = plain space. The sweep is a two-column bright edge; behind it the real
+    characters stand, ahead of it the field flickers with noise.
     """
-    centre = (w - 1) / 2
-    sigma = max(1.4, w * 0.11)
-    out = []
-    for x in range(w):
-        d = (x - centre) / sigma
-        peak = math.exp(-0.5 * d * d) * progress
-        noise = rng.random() * (1.0 - progress) * 0.5
-        out.append(max(0, min(HEIGHT, round(max(peak, noise) * HEIGHT))))
+    out: list[tuple[str, int]] = []
+    for x, ch in enumerate(line):
+        if x < edge:
+            out.append((ch, -1 if ch == ' ' else 0))
+        elif x <= cut:
+            out.append((scan, 1))
+        elif rng.random() < 0.14:
+            out.append((noise[rng.randrange(len(noise))], 2))
+        else:
+            out.append((' ', -1))
     return out
 
 
-def _scope(caps: Caps, progress: float, seed: int, status: str) -> list[Text]:
-    """The framed spectrum: a titled box with the signal inside it."""
+def _wordmark(caps: Caps, progress: float, seed: int, locked: bool) -> list[Text]:
     p = caps.palette
-    w = _width(caps)
+    art, noise, scan = _art(caps)
+    art = [r for r in art if r]                       # drop the ASCII pad line
+    width = max(len(r) for r in art)
     rng = random.Random(seed)
-    heights = _heights(w, progress, rng)
-    fill = _bars(caps)
-    ascii_ = caps.glyphs == GlyphLevel.ASCII
-    done = progress >= 0.999
+    cut = int(progress * (width + 2))
+    edge = max(0, cut - 1)
 
-    # Border and title glyphs degrade to ASCII.
-    tl, tr, bl, br, h, v = (('+', '+', '+', '+', '-', '|') if ascii_
-                            else ('╔', '╗', '╚', '╝', '═', '║'))
-    bar_col = p.accent if done else (p.accent2 if progress > 0.45 else p.dim)
-    frame_col = p.accent if done else p.border
-
-    title = ' signal '
-    top = Text().add(tl + h, frame_col).add(title, p.muted)
-    top.add(h * max(0, w - text_width(title)), frame_col).add(h + tr, frame_col)
-
-    rows = [top]
-    for r in range(HEIGHT, 0, -1):
-        body = ''.join(fill if hh >= r else ' ' for hh in heights)
-        row = Text().add(v + ' ', frame_col).add(body, bar_col)
-        row.add(' ' + v, frame_col)
-        rows.append(row)
-
-    label = f' {status} '
-    bottom = Text().add(bl + h, frame_col)
-    bottom.add(h * max(0, w - text_width(label)), frame_col)
-    bottom.add(label, p.ok if done else p.dim).add(h + br, frame_col)
-    rows.append(bottom)
-    return rows
-
-
-def _wordmark(caps: Caps, lit: bool) -> Text:
-    """`C R U X`, letter-spaced. Small on purpose: the scope is the hero."""
-    p = caps.palette
-    gap = '   ' if caps.glyphs != GlyphLevel.ASCII else '  '
-    return Text().add(gap.join(APP_TITLE), p.accent if lit else p.dim, bold=lit)
+    rows: list[Text] = []
+    for line in art:
+        line = line.ljust(width)
+        if locked:
+            rows.append(Text().add(line, p.accent, bold=True))
+            continue
+        t = Text()
+        run, run_role = '', None
+        for ch, role in _reveal(line, cut, edge, noise, scan, rng):
+            if role != run_role and run:
+                t.add(run, {0: p.accent, 1: p.accent2, 2: p.dim}.get(run_role),
+                      bold=(run_role in (0, 1)))
+                run = ''
+            run, run_role = run + ch, role
+        if run:
+            t.add(run, {0: p.accent, 1: p.accent2, 2: p.dim}.get(run_role),
+                  bold=(run_role in (0, 1)))
+        rows.append(t)
+    return rows, width
 
 
 def _tagline(caps: Caps) -> str:
@@ -129,65 +132,66 @@ def _centre(s: str, cols: int) -> str:
 
 
 def _indent(pad: int, txt: Text) -> Text:
-    """A copy of `txt` shifted right by `pad` columns."""
     out = Text().add(' ' * pad)
     out.spans.extend(txt.spans)
     return out
 
 
-def _compose(caps: Caps, scope: list[Text], lit: bool, note: str,
-             hold: bool) -> list[Text]:
-    """Stack the scope, the wordmark, the tagline, the note and the hint,
-    centred, with the vertical margin that keeps it settled on screen."""
+def _compose(caps: Caps, word: list[Text], width: int, locked: bool,
+             status: str, note: str, hold: bool) -> list[Text]:
     p = caps.palette
-    w = _width(caps)
-    show_note = bool(note) and lit and text_width(note) <= caps.cols - 2
-    below = 4 + (2 if show_note else 0) + (2 if (hold and lit) else 0)
-    top = max(1, (caps.rows - (HEIGHT + 2) - below) // 2)
-    pad = max(0, (caps.cols - (w + 4)) // 2)
+    ascii_ = caps.glyphs == GlyphLevel.ASCII
+    show_note = bool(note) and locked and text_width(note) <= caps.cols - 2
+    below = 4 + (2 if show_note else 0) + (2 if (hold and locked) else 0)
+    top = max(1, (caps.rows - len(word) - below) // 2)
+    pad = max(0, (caps.cols - width) // 2)
 
     rows: list[Text] = [Text() for _ in range(top)]
-    for line in scope:
+    for line in word:
         rows.append(_indent(pad, line))
+
+    # A status readout under the wordmark: [ scanning ] / [ locked ].
+    bar = '=' if ascii_ else '─'
+    rule = Text().add(' ' * pad)
+    rule.add(bar * max(0, width - text_width(status) - 4), p.border)
+    rule.add(f' [ {status} ]', p.ok if locked else p.dim)
+    rows.append(rule)
+
     rows.append(Text())
-    word = _wordmark(caps, lit)
-    rows.append(_indent(max(0, (caps.cols - word.width()) // 2), word))
-    rows.append(Text().add(_centre(_tagline(caps), caps.cols), p.dim))
+    rows.append(Text().add(_centre(_tagline(caps), caps.cols),
+                           p.muted if locked else p.dim))
     if show_note:
         rows += [Text(), Text().add(_centre(note, caps.cols), p.accent2)]
-    if hold and lit:
-        rows += [Text(), Text().add(_centre(HOLD_HINT, caps.cols), p.muted)]
+    if hold and locked:
+        rows += [Text(), Text().add(_centre(HOLD_HINT, caps.cols), p.accent,
+                                    bold=True)]
     return rows
 
 
 def frame(caps: Caps, step: int, steps: int = STEPS, note: str = '',
           hold: bool = False) -> list[Text]:
-    """One entrance frame: the peak part-way out of the noise."""
+    """One entrance frame: the sweep part-way across the wordmark."""
     progress = min(1.0, (step + 1) / steps)
-    lit = progress >= 0.999
-    status = 'locked' if lit else 'scanning'
-    scope = _scope(caps, progress, seed=step * 7919, status=status)
-    return _compose(caps, scope, lit, note, hold)
+    locked = progress >= 0.999
+    word, width = _wordmark(caps, progress, seed=step * 7919, locked=locked)
+    status = 'locked' if locked else 'scanning'
+    return _compose(caps, word, width, locked, status, note, hold)
 
 
 def out_frame(caps: Caps, step: int, steps: int = OUT_STEPS) -> list[Text]:
-    """One exit frame: the peak collapsing back into noise."""
+    """One exit frame: the sweep retreating, the letters falling to noise."""
     span = max(1, steps - 1)
     progress = max(0.0, 1.0 - step / span)
+    word, width = _wordmark(caps, progress, seed=104729 + step * 7919,
+                            locked=False)
     status = 'signal lost' if progress < 0.2 else 'releasing'
-    scope = _scope(caps, progress, seed=104729 + step * 7919, status=status)
-    return _compose(caps, scope, lit=False, note='', hold=False)
+    return _compose(caps, word, width, False, status, '', False)
 
 
 def farewell_frame(caps: Caps) -> list[Text]:
-    """After the signal is gone: the wordmark and the tagline, held a beat."""
-    p = caps.palette
-    word = _wordmark(caps, lit=True)
-    top = max(1, (caps.rows - 3) // 2)
-    rows: list[Text] = [Text() for _ in range(top)]
-    rows.append(_indent(max(0, (caps.cols - word.width()) // 2), word))
-    rows += [Text(), Text().add(_centre(_tagline(caps), caps.cols), p.dim)]
-    return rows
+    """After the sweep is gone: the locked wordmark and the tagline, a beat."""
+    word, width = _wordmark(caps, 1.0, seed=0, locked=True)
+    return _compose(caps, word, width, True, 'clear', '', False)
 
 
 def scope_note(registry) -> str:
@@ -216,13 +220,7 @@ def _paint(tty, caps: Caps, rows: list[Text]) -> bool:
 
 def play(tty, caps: Caps, note: str = '', hold: bool = True,
          clock=None) -> None:
-    """Animate the entrance, then hold for a key. Never raises.
-
-    A keypress during the animation ends it and counts as the key that
-    releases the hold: someone skipping the entrance is not asking to press a
-    second key. `hold=False` is the degraded floor for a caller with no
-    keyboard.
-    """
+    """Animate the entrance, then hold for a key. Never raises."""
     import time
     clock = clock or time.monotonic
     if not fits(caps):
