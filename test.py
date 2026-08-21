@@ -805,6 +805,50 @@ def test_chain_partial() -> None:
        'to the pivot or the result, never a dead end')
 
 
+def test_list_windowing() -> None:
+    """The selected item must stay on screen through a full traversal.
+
+    This is the regression guard for a real bug: the list scrolled in rows
+    while the cursor counted items, and screens that draw two rows per item let
+    the selection descend twice as fast as the window and run off the bottom,
+    so pressing down did nothing selectable. The window is measured in item
+    blocks now, and this walks every item at cramped heights to prove the
+    selector never disappears.
+    """
+    from crux.screens.home import HomeScreen
+    from crux.screens.track import TrackScreen
+
+    session = Session.open(clock=FakeClock(), read_only=True)
+
+    def selector_visible(scr, caps) -> bool:
+        return any(caps.g('sel') in t.plain() for t in scr.render(caps))
+
+    for make in (lambda: HomeScreen(session),
+                 lambda: TrackScreen(session, 'sift'),      # 26 items
+                 lambda: TrackScreen(session, 'salvage'),
+                 lambda: TrackScreen(session, 'conduit')):
+        for rows in (10, 12, 16, 20, 24):
+            caps = R.Caps(R.ColorLevel.NONE, R.GlyphLevel.UNICODE,
+                          next(iter(PALETTES.values())), 80, rows)
+            scr = make()
+            n = scr.count()
+            for _ in range(n + 2):        # a full loop plus wrap-around
+                ok(selector_visible(scr, caps),
+                   f'{type(scr).__name__} @80x{rows}: selector visible at '
+                   f'cursor {scr.cursor}/{n}')
+                for r in scr.render(caps):
+                    ok(r.width() <= caps.cols,
+                       f'{type(scr).__name__} @80x{rows}: row fits')
+                scr.handle(K.parse('Down'))
+            # End and Home land on a visible selection too
+            scr.handle(K.parse('End'))
+            ok(selector_visible(scr, caps),
+               f'{type(scr).__name__} @80x{rows}: End keeps the selector shown')
+            scr.handle(K.parse('Home'))
+            ok(selector_visible(scr, caps),
+               f'{type(scr).__name__} @80x{rows}: Home keeps the selector shown')
+
+
 def test_home_shows_chain() -> None:
     """The picker sets the capstone apart from the three skill tracks."""
     from crux.screens.home import HomeScreen
@@ -1218,7 +1262,7 @@ def main() -> int:
                test_result_screens_scroll, test_conduit_engine,
                test_conduit_end_to_end, test_all_conduit_solutions,
                test_chain_flow, test_chain_partial, test_home_shows_chain,
-               test_splash,
+               test_list_windowing, test_splash,
                test_screens_render, test_screen_contract, test_walkthrough,
                test_stub_records_nothing, test_session_persists, test_panning):
         fn()

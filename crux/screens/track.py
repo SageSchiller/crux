@@ -36,38 +36,49 @@ class TrackScreen(ListScreen):
     def empty_state(self, caps: Caps) -> list[Text]:
         return [line('  No scenarios in this track yet.', caps.palette.muted)]
 
-    def rows(self, caps: Caps) -> list[Text]:
+    def blocks(self, caps: Caps) -> list[list[Text]]:
+        """One tight row per scenario: a status dot, the title, and the tier
+        badge with any best score or missing tool folded in on the right.
+
+        One row rather than two, because the tier is a small thing and a second
+        line for it halved how many scenarios were on screen. The status suffix
+        is built first so the title can be truncated to leave room for it,
+        rather than the title shoving the badge off the edge."""
         p = caps.palette
-        out: list[Text] = []
+        out: list[list[Text]] = []
         for i, s in enumerate(self.track.scenarios):
             sel = i == self.cursor
-            t = selector(caps, sel)
             best = self.session.state.best(s.id)
             if best is None:
-                mark = caps.g('dot_off')
-                colour = p.dim
+                mark, mcol = caps.g('dot_off'), p.dim
             elif best.total >= 90:
-                mark = caps.g('check')
-                colour = p.ok
+                mark, mcol = caps.g('check'), p.ok
             else:
-                mark = caps.g('dot_on')
-                colour = p.warn
-            t.add(f'{mark} ', colour)
-            t.add(s.title, p.accent if sel else p.fg, bold=sel)
-            out.append(t)
+                mark, mcol = caps.g('dot_on'), p.warn
 
-            d = Text().add('       ')
             tier = TIER_MARK.get(s.tier, s.tier)
-            d.add(tier, p.ok if s.tier == 'verified' else
-                        (p.info if s.tier == 'graded' else p.warn))
-            if isinstance(s.body, StubBody):
-                d.add(f'   {s.body.phase}', p.dim)
+            tcol = (p.ok if s.tier == 'verified' else
+                    p.info if s.tier == 'graded' else p.warn)
+            suffix = Text().add('  ')
             miss = missing_needs(s)
+            if isinstance(s.body, StubBody):
+                suffix.add(f'{s.body.phase}  ', p.warn)
+            suffix.add(tier, tcol)
             if miss:
-                d.add(f'   needs {", ".join(miss)}', p.warn)
+                suffix.add(f'  needs {", ".join(miss)}', p.warn)
             elif best is not None:
-                d.add(f'   best {best.total:.0f}', p.dim)
-            out.append(d)
+                suffix.add(f'  best {best.total:.0f}', p.dim)
+
+            # room for: selector(3) + borders(2) + dot(2) + a gap before suffix
+            room = max(8, caps.cols - 3 - 2 - 2 - suffix.width() - 2)
+            title = s.title if len(s.title) <= room else s.title[:room - 1] + caps.g('ellipsis')
+
+            t = selector(caps, sel)
+            t.add(f'{mark} ', mcol)
+            t.add(title, p.accent if sel else p.fg, bold=sel)
+            t.pad_to(caps.cols - 2 - suffix.width())
+            t.spans.extend(suffix.spans)
+            out.append([t])
         return out
 
     def activate(self, index: int) -> object:

@@ -230,9 +230,9 @@ class ActScreen(ListScreen):
                      f'{len(self.marked)} line{"" if len(self.marked) == 1 else "s"}. '
                      'What do you do with it?', p.muted), Text()]
 
-    def rows(self, caps: Caps) -> list[Text]:
+    def blocks(self, caps: Caps) -> list[list[Text]]:
         p = caps.palette
-        out: list[Text] = []
+        out: list[list[Text]] = []
         for i, a in enumerate(self.body_data.actions):
             sel = i == self.cursor
             width = caps.cols - 8
@@ -241,11 +241,12 @@ class ActScreen(ListScreen):
             first = selector(caps, sel)
             if wrapped:
                 first.spans.extend(wrapped[0].spans)
-            out.append(first)
+            block = [first]
             for extra in wrapped[1:]:
                 cont = Text().add('     ')
                 cont.spans.extend(extra.spans)
-                out.append(cont)
+                block.append(cont)
+            out.append(block)
         return out
 
     def activate(self, index: int) -> object:

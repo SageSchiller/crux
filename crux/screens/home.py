@@ -52,9 +52,9 @@ class HomeScreen(ListScreen):
             rows.append(Text())
         return rows
 
-    def rows(self, caps: Caps) -> list[Text]:
+    def blocks(self, caps: Caps) -> list[list[Text]]:
         p = caps.palette
-        out: list[Text] = []
+        out: list[list[Text]] = []
         names = list(TRACKS) + ([CHAIN] if self._chain_ready() else [])
         for i, name in enumerate(names):
             track = self.session.registry.track(name)
@@ -63,7 +63,6 @@ class HomeScreen(ListScreen):
             colour = p.accent2 if name == CHAIN else (p.accent if sel else p.fg)
             t.add(f'{name:<9}', colour, bold=sel or name == CHAIN)
             t.add(track.blurb, p.muted)
-            out.append(t)
 
             done, mean = self.session.state.track_summary(name)
             total = len(track.scenarios)
@@ -80,7 +79,7 @@ class HomeScreen(ListScreen):
             else:
                 d.add(f'{total} scenario{"" if total == 1 else "s"}, none '
                       'attempted', p.dim)
-            out.append(d)
+            out.append([t, d])
         return out
 
     def activate(self, index: int) -> object:

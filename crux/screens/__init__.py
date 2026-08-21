@@ -218,8 +218,27 @@ class ListScreen(Screen):
     # -- to implement ------------------------------------------------------
 
     def rows(self, caps: Caps) -> list[Text]:
-        """One Text per selectable row, already styled for the cursor."""
+        """One Text per selectable row, already styled for the cursor.
+
+        Used by the default `blocks()`, which treats every row as its own
+        one-line item. A screen whose items span more than one row overrides
+        `blocks()` instead, so the cursor and the scroll window stay in the
+        same unit.
+        """
         raise NotImplementedError
+
+    def blocks(self, caps: Caps) -> list[list[Text]]:
+        """One list of rows per selectable item.
+
+        This is the unit the cursor and the scroll window both count in, and
+        that is the whole point. When items are one row each the default is
+        exact. When an item is a title plus a detail line, or an action
+        wrapped over three lines, the item is a block: the window keeps it
+        whole and always follows the cursor to it, rather than scrolling in
+        rows while the cursor counts items and letting the selection run off
+        the bottom.
+        """
+        return [[r] for r in self.rows(caps)]
 
     def count(self) -> int:
         raise NotImplementedError
@@ -272,38 +291,53 @@ class ListScreen(Screen):
         return max(3, caps.rows - 4 - used)
 
     def body(self, caps: Caps) -> list[Text]:
-        """Header, then as much of the list as fits, windowed on the cursor.
+        """Header, then as many whole items as fit, windowed on the cursor.
 
-        Without the windowing a track with thirty-seven scenarios renders
-        thirty-seven rows and runs straight off the bottom of the terminal.
-        A track will have more scenarios than a small terminal has lines, so
-        this is not an edge case.
+        The window is measured in item blocks, not in rows, because the cursor
+        moves in items: a screen that draws two rows per item and scrolled in
+        rows let the selection descend twice as fast as the window and run off
+        the bottom, which is exactly the "I press down and nothing is
+        selectable" bug this replaced. Here the cursor's block is always kept
+        whole and always kept on screen.
         """
         self.clamp()
         head = self.header_rows(caps)
-        if self.count() <= 0:
+        n = self.count()
+        if n <= 0:
             return head + self.empty_state(caps)
 
-        rows = self.rows(caps)
-        vp = self.viewport(caps, len(head))
-        if len(rows) <= vp:
+        blocks = self.blocks(caps)
+        avail = self.viewport(caps, len(head))
+        total = sum(len(b) for b in blocks)
+        if total <= avail:
             self.scroll = 0
-            return head + rows
+            return head + [r for b in blocks for r in b]
 
-        # Keep the cursor in view. Rows and items are one-to-one on most
-        # screens; where a screen adds a detail row the drift is one line and
-        # the clamping below absorbs it.
-        vp -= 1                                    # room for the indicator
-        self.scroll = max(0, min(self.scroll, len(rows) - vp))
+        avail = max(1, avail - 1)                  # room for the indicator
+
+        def fits_from(start: int) -> int:
+            """Index one past the last block that fits starting at `start`.
+
+            Always advances at least one, so a block taller than the whole
+            viewport still shows (clipped by the height backstop) rather than
+            wedging the window."""
+            used, end = 0, start
+            while end < n and used + len(blocks[end]) <= avail:
+                used += len(blocks[end])
+                end += 1
+            return max(end, start + 1)
+
+        self.scroll = max(0, min(self.scroll, n - 1))
         if self.cursor < self.scroll:
             self.scroll = self.cursor
-        elif self.cursor >= self.scroll + vp:
-            self.scroll = self.cursor - vp + 1
-        self.scroll = max(0, min(self.scroll, max(0, len(rows) - vp)))
+        end = fits_from(self.scroll)
+        while self.cursor >= end and self.scroll < self.cursor:
+            self.scroll += 1
+            end = fits_from(self.scroll)
 
-        window = rows[self.scroll:self.scroll + vp]
+        window = [r for b in blocks[self.scroll:end] for r in b]
         p = caps.palette
-        above, below = self.scroll, max(0, len(rows) - self.scroll - vp)
+        above, below = self.scroll, n - end
         marker = Text().add('  ', p.dim)
         if above:
             marker.add(f'{caps.g("up")} {above} above   ', p.dim)
