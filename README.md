@@ -27,23 +27,22 @@ Python 3, standard library only. No pip, no network, ever.
 
 ## Status
 
-**Phase 4 complete: `sift` and `salvage` are both done.** Twenty-six sift
-scenarios across seven families, six of which contain no lead at all. Ten
-salvage scenarios, one per defect class, scored by crux actually being the
-target the exploit is aimed at.
+**Phase 5 complete: all three tracks run.** Twenty-six `sift` scenarios across
+seven families, ten `salvage` scenarios one per defect class, and `conduit`
+building real multi-hop networks out of unprivileged namespaces with a real
+`sshd` on the pivot. No sudo, ever.
 
-The last salvage scenario is the only one in crux you can fail by pressing a
-key.
+Where a kernel will not allow unprivileged user namespaces, `conduit` says so
+on screen and scores nothing rather than pretending to verify.
 
-`conduit` says on screen that its engine is not written yet. See
-`CRUX-PLAN.md`, which is the file to read first.
+See `CRUX-PLAN.md`, which is the file to read first.
 
 ## After any change
 
 ```bash
 python3 validate.py    # structure and content invariants; authoritative on counts
 python3 validate.py --scores   # what canonical play patterns score, per scenario
-python3 validate.py --fast     # skip running the salvage solutions (~1.5s faster)
+python3 validate.py --fast     # skip running salvage and conduit solutions (~18s faster)
 python3 test.py        # behaviour; must be green
 python3 test-tty.py    # optional third suite, drives the real app in a real pty
 ```

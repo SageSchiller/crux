@@ -28,8 +28,8 @@ from crux import render as R                                  # noqa: E402
 from crux.clock import FakeClock, Stopwatch, fmt              # noqa: E402
 from crux.config import MIN_COLS, MIN_ROWS, TRACKS            # noqa: E402
 from crux.loader import load                                  # noqa: E402
-from crux.model import (ContentError, Line, MarkBody, SalvageBody,  # noqa: E402
-                        Scenario, roles)
+from crux.model import (ConduitBody, ContentError, Line,  # noqa: E402
+                        MarkBody, SalvageBody, Scenario, roles)
 from crux.scoring import DECOY_WEIGHT, band, score_marks      # noqa: E402
 from crux.screens import Screen                               # noqa: E402
 from crux.screens.help import HelpScreen                      # noqa: E402
@@ -235,10 +235,13 @@ def test_loader() -> None:
     ok(reg.by_id('nope') is None, 'unknown id returns None')
     ok(reg.track('sift').ready, 'sift has a real engine')
     ok(reg.track('salvage').ready, 'salvage has a real engine now')
-    ok(not reg.track('conduit').ready, 'conduit is honestly marked unbuilt')
+    ok(reg.track('conduit').ready, 'conduit has a real engine now')
     ok(len(reg.track('sift').scenarios) >= 9, 'sift has real breadth')
     ok(reg.by_id('sift-smoke-nmap') is None,
        'Phase 0 scaffolding was deleted, not left beside real content')
+    from crux.model import StubBody as _SB
+    ok(not any(isinstance(sc.body, _SB) for sc in reg.scenarios),
+       'no track is still standing on a placeholder')
 
 
 def test_fixtures() -> None:
@@ -324,7 +327,14 @@ def _screens(session):
 
     sift = session.registry.by_id('sift-nmap-pinned')
     wide = session.registry.by_id('sift-nmap-dc')
-    stub = session.registry.by_id('conduit-smoke')
+    # No content uses StubBody any more: all three tracks have real engines.
+    # The screen stays, because tracks four and five will land the same way,
+    # so it is tested against a scenario built here rather than dropped.
+    from crux.model import StubBody
+    stub = Scenario(id='stub-probe', track='conduit', tier='self',
+                    title='Engine not built yet',
+                    body=StubBody(prompt='a future track lands here',
+                                  phase='Phase 8', debrief='not yet'))
     mark = MarkScreen(session, sift, seed=0)
     lead = sorted(mark.leads)[0]
     watch = Stopwatch(session.clock)
@@ -681,6 +691,102 @@ def test_result_screens_scroll() -> None:
        'and is not offered a key that would do nothing')
 
 
+def test_conduit_engine() -> None:
+    """The namespace engine, including the honest degradation of crux D14."""
+    import tempfile
+
+    from crux.screens.conduit import ConduitScreen
+    from crux.targets import netns
+
+    usable, why = netns.capability()
+    ok(isinstance(usable, bool) and isinstance(why, str),
+       'capability() answers with a verdict and a reason')
+    ok(usable or why, 'and when it says no it says why')
+
+    reg = load()
+    conduits = [s for s in reg.track('conduit').scenarios
+                if isinstance(s.body, ConduitBody)]
+    ok(len(conduits) >= 2, f'{len(conduits)} conduit scenarios')
+    for sc in conduits:
+        b = sc.body
+        eq(sc.tier, 'verified', f'{sc.id}: conduit is verified')
+        ok(b.starter != b.solution, f'{sc.id}: the pair differs')
+        ok(bool(b.topology.probes), f'{sc.id}: has something to verify')
+        ok(bool(b.topology.negative),
+           f'{sc.id}: proves the target is out of reach to begin with')
+        rendered = b.render(b.starter, '/tmp/assets')
+        ok('{{ASSETS}}' not in rendered, f'{sc.id}: assets path substituted')
+
+    assets = netns.prepare_assets(Path(tempfile.mkdtemp()) / 'a')
+    for want in ('id', 'id.pub', 'hostkey', 'sshd_config', 'svc.py',
+                 'etc/passwd', 'etc/shadow', 'empty'):
+        ok((assets / want).exists(), f'prepare_assets makes {want}')
+    ok(netns.prepare_assets(assets) == assets, 'prepare_assets is idempotent')
+    before = (assets / 'id').read_bytes()
+    netns.prepare_assets(assets)
+    eq((assets / 'id').read_bytes(), before,
+       'and does not regenerate a key a student has already referenced')
+
+    # crux D14: with namespaces unavailable, the screen says so and scores
+    # nothing rather than pretending.
+    session = Session.open(clock=FakeClock(), read_only=True)
+    real = netns.capability
+    import crux.screens.conduit as cs
+    cs.capability = lambda: (False, 'unprivileged_userns_clone is 0')
+    try:
+        scr = cs.ConduitScreen(session, conduits[0])
+        caps = all_caps()[0]
+        ok(not scr.usable, 'the screen knows it cannot verify')
+        shown = ''.join(r.plain() for r in scr.render(caps))
+        ok('cannot verify' in shown, 'and says so on the screen')
+        ok('unprivileged_userns_clone' in shown, 'quoting the actual reason')
+        ok(not any(h[0] == 'r' for h in scr.hints(caps)),
+           'and does not offer a run key that would do nothing')
+        before_n = len(session.state.attempts)
+        for chord in ('r', 'e', 'RET', 'g'):
+            scr.handle(K.parse(chord))
+        eq(len(session.state.attempts), before_n,
+           'an unusable track records nothing at all')
+        scr.close()
+    finally:
+        cs.capability = real
+
+
+def test_conduit_end_to_end() -> None:
+    """Actually build a network and open a path through it.
+
+    Skips cleanly where the kernel will not allow it, which is the same crux
+    D14 rule the app follows: better to say nothing than to claim a check that
+    did not happen.
+    """
+    import tempfile
+
+    from crux.targets import netns
+
+    usable, why = netns.capability()
+    if not usable:
+        print(f'  note  conduit end-to-end skipped: {why}')
+        ok(True, 'conduit skipped honestly where namespaces are unavailable')
+        return
+
+    sc = load().by_id('conduit-forward')
+    b = sc.body
+    work = Path(tempfile.mkdtemp(prefix='crux-test-conduit-'))
+    assets = netns.prepare_assets(work / 'assets')
+    path = work / b.filename
+
+    path.write_text(b.render(b.solution, str(assets)))
+    good = netns.run_attempt(b.topology, path, assets, b.settle)
+    ok(good.ok, f'the reference tunnel opens the path ({good.detail or good.error})')
+    eq(good.met, good.total, 'every probe answered')
+
+    path.write_text(b.render(b.starter, str(assets)))
+    bad = netns.run_attempt(b.topology, path, assets, b.settle)
+    ok(not bad.ok, 'the starter does not')
+    ok('did not answer' in bad.detail or bad.error,
+       'and the failure names what did not answer')
+
+
 def test_screen_contract() -> None:
     session = Session.open(clock=FakeClock(), read_only=True, seed_override=0)
     caps = all_caps()[0]
@@ -765,10 +871,15 @@ def test_walkthrough() -> None:
 
 def test_stub_records_nothing() -> None:
     """crux D6: a track with no engine must not write a score."""
+    from crux.model import StubBody
+    from crux.screens.stub import StubScreen
     session = Session.open(clock=FakeClock(), read_only=True)
     before = len(session.state.attempts)
-    from crux.screens.stub import StubScreen
-    scr = StubScreen(session, session.registry.by_id('conduit-smoke'))
+    placeholder = Scenario(id='stub-probe', track='conduit', tier='self',
+                           title='Engine not built yet',
+                           body=StubBody(prompt='a future track lands here',
+                                         phase='Phase 8', debrief='not yet'))
+    scr = StubScreen(session, placeholder)
     caps = all_caps()[0]
     for chord in ('RET', 'SPC', 'a', 'Down'):
         scr.handle(K.parse(chord))
@@ -836,7 +947,8 @@ def main() -> int:
                test_scoring_over_real_content, test_every_scenario_renders,
                test_mock_targets, test_salvage_content, test_salvage_screen,
                test_length_framing, test_hostile_capstone,
-               test_result_screens_scroll,
+               test_result_screens_scroll, test_conduit_engine,
+               test_conduit_end_to_end,
                test_screens_render, test_screen_contract, test_walkthrough,
                test_stub_records_nothing, test_session_persists, test_panning):
         fn()

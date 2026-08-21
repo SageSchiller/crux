@@ -7,7 +7,7 @@ render identically unless something on the row says otherwise.
 
 from __future__ import annotations
 
-from ..model import SalvageBody, StubBody
+from ..model import ConduitBody, SalvageBody, StubBody
 from ..render import Caps, Text, line
 from ..session import Session
 from . import ListScreen, push, selector
@@ -76,4 +76,7 @@ class TrackScreen(ListScreen):
             return push(StubScreen(self.session, s))
         if isinstance(s.body, SalvageBody):
             return push(SalvageScreen(self.session, s))
+        if isinstance(s.body, ConduitBody):
+            from .conduit import ConduitScreen
+            return push(ConduitScreen(self.session, s))
         return push(MarkScreen(self.session, s))

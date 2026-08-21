@@ -20,8 +20,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from crux import render as R
 from crux.config import EXIT_CHORD, TIERS, TRACKS, vault_dir
 from crux.loader import load
-from crux.model import (LINE_KINDS, MarkBody, SalvageBody, Scenario,
-                        StubBody, roles)
+from crux.model import (LINE_KINDS, ConduitBody, MarkBody, SalvageBody,
+                        Scenario, StubBody, roles)
 from crux.scoring import DECOY_WEIGHT, score_marks
 from crux.screens import Screen
 from crux.version import VERSION
@@ -64,6 +64,8 @@ def check_scenario(s: Scenario) -> None:
         check_mark_body(s)
     elif isinstance(s.body, SalvageBody):
         check_salvage_body(s)
+    elif isinstance(s.body, ConduitBody):
+        check_conduit_body(s)
     elif isinstance(s.body, StubBody):
         if s.tier != 'self':
             err(f'{s.id}: a stub must be self tier, not {s.tier!r} '
@@ -116,6 +118,70 @@ def check_salvage_body(s: Scenario) -> None:
                  'who misses it is told only that they missed it')
     if not s.source:
         warn(f'{s.id}: no provenance (crux D11)')
+
+
+def check_conduit_body(s: Scenario) -> None:
+    b: ConduitBody = s.body
+    if s.tier != 'verified':
+        err(f'{s.id}: conduit is verified, not {s.tier!r}')
+    if b.starter == b.solution:
+        err(f'{s.id}: the starter and the solution are identical')
+    if not b.brief.strip():
+        err(f'{s.id}: no brief')
+    topo = b.topology
+    if not getattr(topo, 'probes', ()):
+        err(f'{s.id}: no probes, so nothing could ever be verified')
+    if not getattr(topo, 'negative', ()):
+        warn(f'{s.id}: no negative probe. Without one, a topology that was '
+             'reachable all along would score as a pass and nobody would '
+             'ever find out')
+    if not s.source:
+        warn(f'{s.id}: no provenance (crux D11)')
+
+
+def check_conduit_runs(reg) -> None:
+    """Build every topology for real, twice.
+
+    The solution must open the path and **the starter must not**. That second
+    half is not symmetry for its own sake: the first version of the relay
+    scenario shipped a starter that already worked, because the defect it was
+    built around turned out not to be a defect. Reading the script would never
+    have told anybody. Running it did, immediately.
+
+    About four seconds per run, so roughly fifteen for the track. `--fast`
+    skips it.
+    """
+    import tempfile
+
+    from crux.targets.netns import capability, prepare_assets, run_attempt
+
+    conduits = [s for s in reg.scenarios if isinstance(s.body, ConduitBody)]
+    if not conduits:
+        return
+    usable, why = capability()
+    if not usable:
+        print(f'  note  conduit not verified here: {why} (crux D14)')
+        return
+
+    work = Path(tempfile.mkdtemp(prefix='crux-validate-conduit-'))
+    assets = prepare_assets(work / 'assets')
+    for s in conduits:
+        b: ConduitBody = s.body
+        for label, src, want in (('solution', b.solution, True),
+                                 ('starter', b.starter, False)):
+            path = work / b.filename
+            path.write_text(b.render(src, str(assets)), encoding='utf-8')
+            r = run_attempt(b.topology, path, assets, b.settle)
+            if r.error and want:
+                err(f'{s.id}: building the topology failed: {r.error}')
+                continue
+            if want and not r.ok:
+                err(f'{s.id}: the reference solution does not open the path '
+                    f'({r.met}/{r.total}: {r.detail}), so the scenario is '
+                    'unsolvable')
+            if not want and r.ok:
+                err(f'{s.id}: the STARTER script already works, so the '
+                    'scenario teaches nothing')
 
 
 def check_salvage_runs(reg) -> None:
@@ -370,6 +436,8 @@ def check_screen_contract() -> None:
 #: and the fix is always more realistic output rather than a harsher scorer.
 GREEDY_CEILING = 35.0
 
+_NS_OK = (False, 'not probed')
+
 
 def score_profile(reg, verbose: bool) -> None:
     """What canonical play patterns score, per scenario.
@@ -419,6 +487,9 @@ def score_profile(reg, verbose: bool) -> None:
 
 
 def main() -> int:
+    global _NS_OK
+    from crux.targets.netns import capability
+    _NS_OK = capability()
     reg = load()
     check_registry(reg)
     for s in reg.scenarios:
@@ -428,6 +499,7 @@ def main() -> int:
     score_profile(reg, verbose='--scores' in sys.argv)
     if '--fast' not in sys.argv:
         check_salvage_runs(reg)
+        check_conduit_runs(reg)
     check_ascii_rung()
     check_content_ascii(reg)
     check_exit_chord(reg)
@@ -450,6 +522,14 @@ def main() -> int:
           f'{total_actions} action(s), {no_lead} with no lead')
     print(f'  seeds     each fixture built at {len(PROBE_SEEDS)} seeds, '
           'key stable across all')
+    cond = [s for s in reg.scenarios if isinstance(s.body, ConduitBody)]
+    if cond:
+        hops = sum(len(s.body.topology.links) for s in cond)
+        probes = sum(len(s.body.topology.probes) for s in cond)
+        usable, why = _NS_OK
+        print(f'  conduit   {len(cond)} topologies, {hops} link(s), '
+              f'{probes} probe(s); namespaces '
+              + ('usable here' if usable else f'UNAVAILABLE ({why})'))
     salv = [s for s in reg.scenarios if isinstance(s.body, SalvageBody)]
     if salv:
         reqs = sum(len(s.body.requirements) for s in salv)

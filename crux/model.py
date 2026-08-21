@@ -154,6 +154,32 @@ class SalvageBody:
 
 
 @dataclass(frozen=True, slots=True)
+class ConduitBody:
+    """A conduit scenario: a network you cannot reach across, and a script.
+
+    `starter` is the shell script the student is handed, `solution` is the
+    reference tunnel, and `validate.py` runs both: the solution must open the
+    path and the starter must not. Same contract as salvage, for the same
+    reason.
+
+    `{{ASSETS}}` is substituted with the directory holding the SSH key and
+    config, because the key is generated per install and no scenario can know
+    its path.
+    """
+
+    brief: str
+    filename: str
+    starter: str
+    solution: str
+    topology: object
+    settle: float = 2.0
+    debrief: str = ''
+
+    def render(self, source: str, assets: str) -> str:
+        return source.replace('{{ASSETS}}', assets)
+
+
+@dataclass(frozen=True, slots=True)
 class StubBody:
     """A track whose engine is not built yet.
 

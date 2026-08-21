@@ -127,8 +127,10 @@ def main() -> int:
         ok('CRUX' in home, 'the picker renders its title')
         ok('sift' in home and 'salvage' in home and 'conduit' in home,
            'all three tracks are listed')
-        ok('engine not built yet' in home,
-           'unbuilt tracks say so on the picker')
+        ok('scenario' in home,
+           'the picker shows how much content each track has')
+        ok('engine not built yet' not in home,
+           'no track is still standing on a placeholder')
         ok('q quit' in home, 'the footer advertises a way out')
 
         track = d.send(b'\r')
@@ -189,6 +191,22 @@ def main() -> int:
         ok('1 run' in after, 'the run was counted')
         ok('conditions met' in after or 'Closest attempt' in after,
            'and the screen reports how close it got')
+
+        # conduit: the screen only. Building a network takes seconds and is
+        # covered by test.py and validate.py; what this suite is for is that
+        # the screen renders and offers its keys through a real terminal.
+        # The picker keeps its cursor, and it is on salvage after the walk
+        # above, so one Down reaches conduit rather than three.
+        d.send(b'H')
+        d.send(b'\x1b[B')
+        cond = d.send(b'\r')
+        ok('conduit' in cond, 'the conduit track opens')
+        first = d.send(b'\r')
+        ok('tunnel.sh' in first or 'cannot verify' in first,
+           'the conduit screen names its script, or says it cannot verify')
+        if 'cannot verify' not in first:
+            ok('r build and run' in first, 'and offers to build the network')
+            ok('key' in first, 'and tells you where the SSH key is')
     finally:
         code = d.close()
 
