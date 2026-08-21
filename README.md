@@ -40,7 +40,7 @@ See `CRUX-PLAN.md`, which is the file to read first.
 ```bash
 python3 validate.py    # structure and content invariants; authoritative on counts
 python3 validate.py --scores   # what canonical play patterns score, per scenario
-python3 validate.py --fast     # skip running salvage and conduit solutions (~18s faster)
+python3 validate.py --fast     # skip really running every solution (that is the slow part, ~1 min)
 python3 test.py        # behaviour; must be green
 python3 test-tty.py    # optional third suite, drives the real app in a real pty
 ```
