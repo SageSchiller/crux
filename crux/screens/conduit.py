@@ -27,6 +27,7 @@ from pathlib import Path
 from ..clock import Stopwatch, fmt
 from ..config import data_dir
 from ..model import ConduitBody, Scenario
+from .. import progress
 from ..render import Caps, Text, line, wrap_rich
 from ..scoring import score_run
 from ..session import Session
@@ -61,6 +62,10 @@ class ConduitScreen(Screen):
         self.opened = False
         self.last = None
         self.error = ''
+        self.resumed = False
+        self._subs: dict = {}
+        #: Set by the first `R`; a second one restores.
+        self.confirm_restore = False
         self.path: Path | None = None
         self.assets: Path | None = None
 
@@ -70,15 +75,14 @@ class ConduitScreen(Screen):
             self.error = why
             return
         try:
-            work = data_dir() / 'work' / scenario.id
             self.assets = prepare_assets(data_dir() / 'work' / '_assets')
-            work.mkdir(parents=True, exist_ok=True)
-            self.path = work / self.body_data.filename
-            if not self.path.exists():
-                self.path.write_text(
-                    self.body_data.render(self.body_data.starter,
-                                          str(self.assets)),
-                    encoding='utf-8')
+            self._subs = {'assets': str(self.assets)}
+            self.path, fresh = progress.prepare(
+                scenario.id, self.body_data.filename,
+                self.body_data.render(self.body_data.starter,
+                                      str(self.assets)),
+                self._subs)
+            self.resumed = not fresh
         except (OSError, subprocess.SubprocessError) as e:
             self.error = f'could not prepare the scenario: {e}'
 
@@ -190,6 +194,12 @@ class ConduitScreen(Screen):
         rows.append(Text())
         rows.append(line(f'  script   {self.path}', p.info))
         rows.append(line(f'  key      {self.assets}/id', p.info))
+        if self.confirm_restore:
+            rows.append(line('  Press R again to discard your edits and put '
+                             'the original script back.', p.warn, bold=True))
+        elif self.resumed:
+            rows.append(line('  (your edited script, kept from last time)',
+                             p.dim))
         rows.append(Text())
         t = Text().add('  time  ', p.muted).add(fmt(self.watch.elapsed()), p.fg)
         rows.append(t)
@@ -213,8 +223,12 @@ class ConduitScreen(Screen):
                     else [])
             return base + [('esc', 'back'), ('H', 'home'), ('q', 'quit'),
                            ('?', 'help')]
+        if self.confirm_restore:
+            return [('R', 'again to discard your edits'), ('esc', 'keep them'),
+                    ('q', 'quit')]
         return [('e', 'edit'), ('r', 'build and run'), ('g', 'give up'),
-                ('esc', 'back'), ('H', 'home'), ('q', 'quit'), ('?', 'help')]
+                ('R', 'restore original'), ('esc', 'back'), ('H', 'home'),
+                ('q', 'quit'), ('?', 'help')]
 
     def handle(self, key):
         if not self.usable or self.error:
@@ -233,4 +247,20 @@ class ConduitScreen(Screen):
             return self._run()
         if key.name == 'g' and not key.ctrl and self.runs:
             return self._finish()
+        if key.name == 'R' and not key.ctrl:
+            if self.confirm_restore:
+                progress.restore(self.scenario.id, self.body_data.filename,
+                                 self.body_data.render(
+                                     self.body_data.starter,
+                                     self._subs.get('assets', '')),
+                                 self._subs)
+                self.confirm_restore = False
+                self.resumed = False
+                self.last = None
+            else:
+                self.confirm_restore = True
+            return STAY
+        if self.confirm_restore and key.name == 'ESC':
+            self.confirm_restore = False
+            return STAY
         return super().handle(key)

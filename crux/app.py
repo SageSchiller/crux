@@ -17,6 +17,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from . import progress
 from . import render as R
 from . import splash as SP
 from . import term as T
@@ -46,6 +47,14 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
                     help='write attempt history to PATH and exit')
     ap.add_argument('--import', dest='import_', metavar='PATH',
                     help='merge attempt history from PATH and exit')
+    ap.add_argument('--reset', nargs='?', const='all',
+                    choices=('history', 'work', 'all'), default=None,
+                    metavar='WHAT',
+                    help='erase progress and exit: history (recorded '
+                         'attempts), work (your edited scripts), or all '
+                         '(default). Prints what will go and asks first')
+    ap.add_argument('--yes', action='store_true',
+                    help='skip the confirmation for --reset')
     ap.add_argument('--seed', type=int, default=None,
                     help='pin every fixture to this seed instead of drawing '
                          'a fresh one per attempt; use it to reproduce an '
@@ -95,6 +104,49 @@ def _doctor() -> int:
     return 0
 
 
+def _reset(what: str, assume_yes: bool = False) -> int:
+    """Erase progress, after saying exactly what will go.
+
+    Destructive and not undoable, so it states the damage in full and asks,
+    unless `--yes`. It also names `--export` on the way past: history that took
+    weeks to accumulate should not be thrown away by somebody who did not know
+    they could keep a copy.
+    """
+    s = progress.summary()
+    doing_history = what in ('history', 'all')
+    doing_work = what in ('work', 'all')
+
+    print(f'{APP_TITLE} reset: {what}')
+    if doing_history:
+        print(f'  history   {s.history_line()}')
+    if doing_work:
+        print(f'  work      {s.work_line()}')
+    if not s.anything:
+        print('\nThere is no progress to erase.')
+        return 0
+    if doing_history and s.attempts:
+        print('\n  Keep a copy first with:  crux --export history.json')
+
+    if not assume_yes:
+        try:
+            answer = input('\nErase this? It cannot be undone. [y/N] ')
+        except (EOFError, KeyboardInterrupt):
+            print()
+            answer = ''
+        if answer.strip().lower() not in ('y', 'yes'):
+            print('Nothing was erased.')
+            return 1
+
+    done = []
+    if doing_history and progress.clear_history():
+        done.append('history')
+    if doing_work and progress.clear_work():
+        done.append('work files')
+    print('Erased ' + ' and '.join(done) + '.' if done
+          else 'Nothing needed erasing.')
+    return 0
+
+
 def _export(path: str) -> int:
     st = State.load()
     Path(path).write_text(st.export_json(), encoding='utf-8')
@@ -121,6 +173,8 @@ def run(argv: list[str] | None = None) -> int:
         return 0
     if args.doctor:
         return _doctor()
+    if args.reset:
+        return _reset(args.reset, assume_yes=args.yes)
     if args.export:
         return _export(args.export)
     if args.import_:

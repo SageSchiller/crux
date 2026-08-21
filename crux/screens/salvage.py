@@ -25,6 +25,7 @@ from pathlib import Path
 from ..clock import Stopwatch, fmt
 from ..config import data_dir
 from ..model import SalvageBody, Scenario
+from .. import progress
 from ..render import Caps, Text, line, wrap_rich
 from ..scoring import score_run
 from ..session import Session
@@ -71,6 +72,11 @@ class SalvageScreen(Screen):
         self.read_first: bool | None = None
         self.last: str = ''
         self.error: str = ''
+        self.resumed = False
+        self._subs: dict = {}
+        #: Set by the first `R`; a second one restores. A single keypress that
+        #: threw away an hour of repair work would be a poor trade.
+        self.confirm_restore = False
         self._open_target()
 
     # -- lifecycle ---------------------------------------------------------
@@ -94,13 +100,17 @@ class SalvageScreen(Screen):
             self.error = f'could not open a target socket: {e}'
             return
 
-        work = data_dir() / 'work' / self.scenario.id
         try:
-            work.mkdir(parents=True, exist_ok=True)
-            self.path = work / b.filename
             sink_url = self.sink.url if self.sink is not None else ''
-            self.path.write_text(b.render(b.broken, self.url, port, sink_url),
-                                 encoding='utf-8')
+            self._subs = {'url': self.url, 'sink': sink_url,
+                          'port': str(port)}
+            self.path, fresh = progress.prepare(
+                self.scenario.id, b.filename,
+                b.render(b.broken, self.url, port, sink_url), self._subs)
+            # Your repairs are kept between visits. The target port is
+            # ephemeral, so only the address crux injected last time is
+            # swapped for this run's; everything you wrote is untouched.
+            self.resumed = not fresh
         except OSError as e:
             self.error = f'could not write the exploit file: {e}'
 
@@ -235,6 +245,12 @@ class SalvageScreen(Screen):
         rows.append(Text())
         rows.append(line(f'  target   {self.url}', p.info))
         rows.append(line(f'  file     {self.path}', p.info))
+        if self.confirm_restore:
+            rows.append(line('  Press R again to discard your edits and put '
+                             'the original script back.', p.warn, bold=True))
+        elif self.resumed:
+            rows.append(line('  (your edited script, kept from last time)',
+                             p.dim))
         rows.append(Text())
 
         n = self.target.record.count if self.target else 0
@@ -261,8 +277,12 @@ class SalvageScreen(Screen):
         return rows
 
     def hints(self, caps: Caps) -> list[tuple[str, str]]:
+        if self.confirm_restore:
+            return [('R', 'again to discard your edits'), ('esc', 'keep them'),
+                    ('q', 'quit')]
         return [('e', 'edit'), ('r', 'run'), ('g', 'give up'),
-                ('esc', 'back'), ('H', 'home'), ('q', 'quit'), ('?', 'help')]
+                ('R', 'restore original'), ('esc', 'back'), ('H', 'home'),
+                ('q', 'quit'), ('?', 'help')]
 
     def handle(self, key):
         if self.error:
@@ -273,4 +293,21 @@ class SalvageScreen(Screen):
             return self._run()
         if key.name == 'g' and not key.ctrl and self.runs:
             return self._finish()
+        if key.name == 'R' and not key.ctrl:
+            if self.confirm_restore:
+                b = self.body_data
+                progress.restore(self.scenario.id, b.filename,
+                                 b.render(b.broken, self._subs.get('url', ''),
+                                          int(self._subs.get('port') or 0),
+                                          self._subs.get('sink', '')),
+                                 self._subs)
+                self.confirm_restore = False
+                self.resumed = False
+                self.last = ''
+            else:
+                self.confirm_restore = True
+            return STAY
+        if self.confirm_restore and key.name == 'ESC':
+            self.confirm_restore = False
+            return STAY
         return super().handle(key)

@@ -86,11 +86,18 @@ class HomeScreen(ListScreen):
         return push(TrackScreen(self.session, self._row_track(index)))
 
     def extra_hints(self) -> list[tuple[str, str]]:
-        return [('e', 'errors')] if self.session.registry.errors else []
+        out = [('e', 'errors')] if self.session.registry.errors else []
+        # Uppercase deliberately: every lowercase key on this screen selects
+        # something, and a destructive action should not sit one fat-finger
+        # away from one of them.
+        return out + [('R', 'reset')]
 
     def handle(self, key):
         if key.name == 'e' and self.session.registry.errors:
             return push(ErrorScreen(self.session))
+        if key.name == 'R' and not key.ctrl:
+            from .reset import ResetScreen
+            return push(ResetScreen(self.session))
         return super().handle(key)
 
 

@@ -662,6 +662,105 @@ def test_hostile_capstone() -> None:
         scr2.close()
 
 
+def test_progress_reset_and_work_files() -> None:
+    """Work survives a visit, re-points itself, and can be reset.
+
+    Two bugs sat here before there was a reset at all: salvage rewrote your
+    script from the original every time you opened the scenario, silently
+    destroying your repairs, and conduit never rewrote it, so a mangled script
+    could not be recovered. A reset is meaningless if the app is resetting your
+    file behind your back anyway, so both are covered here.
+    """
+    import subprocess
+    import tempfile
+
+    from crux import progress
+    from crux.screens.reset import ResetScreen
+    from crux.screens.salvage import SalvageScreen
+    from crux.scoring import score_run
+
+    home = Path(tempfile.mkdtemp(prefix='crux-reset-'))
+    real_home = os.environ['XDG_DATA_HOME']
+    os.environ['XDG_DATA_HOME'] = str(home)
+    try:
+        session = Session.open(clock=FakeClock())
+        sc = session.registry.by_id('salvage-py2')
+
+        first = SalvageScreen(session, sc)
+        first_url = first.url
+        ok(first.path.exists(), 'the exercise file is written on first open')
+        ok(not first.resumed, 'and the first open is not a resume')
+        first.path.write_text(first.path.read_text() + '\n# MY REPAIR\n')
+        first.close()
+
+        second = SalvageScreen(session, sc)
+        text = second.path.read_text()
+        ok('# MY REPAIR' in text, 'your edits survive reopening the scenario')
+        ok(second.resumed, 'and the screen says it resumed your file')
+        ok(first_url != second.url, 'the mock target really does move port')
+        ok(first_url not in text, 'the dead address was replaced')
+        ok(second.url in text, 'with the one that answers now')
+
+        # Restore takes two presses, and the first one only arms it.
+        second.handle(K.parse('R'))
+        ok(second.confirm_restore, 'one R arms the restore rather than doing it')
+        ok(any('again' in h[1] for h in second.hints(all_caps()[0])),
+           'and the footer says a second press is needed')
+        second.handle(K.parse('ESC'))
+        ok(not second.confirm_restore, 'esc disarms it')
+        ok('# MY REPAIR' in second.path.read_text(), 'and changes nothing')
+
+        second.handle(K.parse('R'))
+        second.handle(K.parse('R'))
+        restored = second.path.read_text()
+        ok('# MY REPAIR' not in restored, 'two presses restore the original')
+        ok(second.url in restored, 'and the original still points at the target')
+        second.close()
+
+        # A hardcoded address the scenario is *about* must not be re-pointed.
+        addr = session.registry.by_id('salvage-address')
+        a1 = SalvageScreen(session, addr)
+        a1.path.write_text(addr.body.render(addr.body.solution, a1.url,
+                                            int(a1._subs['port']), ''))
+        a1.close()
+        a2 = SalvageScreen(session, addr)
+        kept = a2.path.read_text()
+        # The solution keeps LHOST and LPORT as separate variables, so the
+        # joined form only exists at runtime; both halves must survive.
+        ok('"127.0.0.1"' in kept and '"4444"' in kept,
+           'the collector address the exercise is about is left alone')
+        subprocess.run([sys.executable, str(a2.path)], capture_output=True,
+                       timeout=25)
+        ok(a2.target.verdict()[0],
+           'and a solved script still lands after being re-pointed')
+        a2.close()
+
+        # Reset, from the screen, needs two keys and then really erases.
+        session.record_run(sc, score_run(True, 3, 3, 'ok', 1, True, 42.0))
+        before = progress.summary(session.state)
+        ok(before.attempts >= 1 and before.work_scenarios >= 1,
+           'there is progress on disk to erase')
+
+        rs = ResetScreen(session)
+        rs.handle(K.parse('a'))
+        ok(rs.pending == 'all', 'one key arms the reset')
+        ok(Path(home / 'crux' / 'state.json').exists(),
+           'and arming it erases nothing')
+        rs.handle(K.parse('a'))
+        ok(not (home / 'crux' / 'state.json').exists(), 'history is erased')
+        ok(not (home / 'crux' / 'work').exists(), 'work files are erased')
+        eq(session.state.attempts, [], 'and the live session forgets them too')
+        ok('Erased' in ''.join(r.plain() for r in rs.render(all_caps()[0])),
+           'the screen says what it did')
+
+        after = progress.summary(session.state)
+        ok(not after.anything, 'nothing is left')
+        ok('nothing' in after.history_line() or 'no attempts'
+           in after.history_line(), 'and the summary says so')
+    finally:
+        os.environ['XDG_DATA_HOME'] = real_home
+
+
 def test_result_explains_every_key_line() -> None:
     """Every lead and every decoy must say what it meant.
 
@@ -1410,7 +1509,8 @@ def main() -> int:
                test_result_screens_scroll, test_conduit_engine,
                test_conduit_end_to_end, test_all_conduit_solutions,
                test_chain_flow, test_chain_partial, test_home_shows_chain,
-               test_list_windowing, test_result_explains_every_key_line,
+               test_list_windowing, test_progress_reset_and_work_files,
+               test_result_explains_every_key_line,
                test_no_third_party_attribution,
                test_splash,
                test_screens_render, test_screen_contract, test_walkthrough,
