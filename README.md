@@ -18,7 +18,7 @@ Three tracks:
 ## Running it
 
 ```bash
-python3 -m crux            # from the source tree (opens on the CRUX wordmark; --no-splash skips it)
+python3 -m crux            # from the source tree (opens on the signal-scope splash; --no-splash skips it)
 ./build.sh && dist/crux.pyz   # a single file that needs nothing installed
 python3 -m crux --doctor   # what this terminal and machine support
 ```

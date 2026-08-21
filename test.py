@@ -1055,16 +1055,27 @@ def test_splash() -> None:
                 ok(plain.isascii(),
                    'the splash ASCII rung carries no non-ASCII')
 
-    # The resolve is a real animation: step 0 is mostly noise, the last step
-    # is exactly the art, and they differ.
+    # The scope is a real animation: the first frame is mostly noise floor,
+    # the last is a clean locked peak, and they differ. The locked frame is
+    # deterministic (the noise term is gone at full progress), so the peak is
+    # stable while the entrance is held rather than flickering.
     caps = R.Caps(R.ColorLevel.TRUE, R.GlyphLevel.UNICODE,
                   next(iter(PALETTES.values())), 80, 22)
     first = ''.join(r.plain() for r in SP.frame(caps, 0))
     last = ''.join(r.plain() for r in SP.frame(caps, SP.STEPS - 1))
-    ok('CRUX' not in ''.join(SP.BLOCK) or first != last,
-       'the entrance actually animates rather than snapping')
-    for ln in SP.BLOCK:
-        ok(ln in last, 'the final frame is the resolved wordmark')
+    ok(first != last, 'the entrance animates rather than snapping')
+    ok(''.join(r.plain() for r in SP.frame(caps, SP.STEPS - 1))
+       == last, 'the locked frame is stable, not random, while held')
+    ok('locked' in last and 'scanning' in first,
+       'the status reads scanning while acquiring and locked at the end')
+    peak = SP.frame(caps, SP.STEPS - 1)
+    fill = '\u2588'
+    top_bars = [r.plain().count(fill) for r in peak if fill in r.plain()]
+    ok(top_bars == sorted(top_bars),
+       'the locked spectrum is a peak: narrow at the top, wide at the base')
+    joined = ''.join(r.plain() for r in peak)
+    ok(all(letter in joined for letter in 'CRUX'),
+       'the wordmark is present under the scope')
 
     # It degrades: too small to fit means it does not play at all.
     ok(SP.fits(caps), 'a big enough window fits the splash')
