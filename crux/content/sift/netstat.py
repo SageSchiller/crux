@@ -16,24 +16,25 @@ PLAYBOOK = 'PEN-200 Playbook'
 
 _LOOPBACK = MarkBody(
     prompt='You have a shell on the target. Your earlier port scan from '
-           'outside found only 22 and 80. Mark every line that changes what '
+           'outside found only 22 and 8000. Mark every line that changes what '
            'you do next.',
     fixture=NetstatDump(sockets=(
         Socket('tcp', '0.0.0.0:22', program='-', kind='decoy'),
-        Socket('tcp', '0.0.0.0:80', program='-', kind='decoy'),
-        Socket('tcp', '127.0.0.1:50051', program='1183/python3', kind='lead'),
+        Socket('tcp', '0.0.0.0:8000', program='841/ttyd', kind='decoy'),
+        Socket('tcp', '127.0.0.1:65432', program='912/python3', kind='lead'),
         Socket('tcp', '127.0.0.53:53', program='-'),
-        Socket('tcp6', ':::80', program='-'),
+        Socket('tcp6', ':::8000', program='841/ttyd'),
         Socket('udp', '0.0.0.0:68', state='', program='-'),
         Socket('udp', '127.0.0.53:53', state='', program='-'),
     )),
     actions=(
-        Action('Forward 50051 to your own machine and talk to whatever is '
+        Action('Forward 65432 to your own machine and talk to whatever is '
                'listening on it.', True,
                'The only line here your scan could not have seen. A service '
                'bound to loopback was deliberately not exposed, which is a '
                'good reason to look at it and often means it is less '
-               'defended than the things that were.'),
+               'defended than the things that were. On the box this is from, '
+               'it was a root-owned RPC service one exploit away from root.'),
         Action('Attack the web server on 80 more thoroughly.',
                why='You came in through it. Re-attacking your own entry point '
                    'is the most comfortable thing on this screen and the '

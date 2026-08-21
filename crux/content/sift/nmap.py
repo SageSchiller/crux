@@ -15,6 +15,7 @@ from ...model import Action, MarkBody, Scenario
 from ...targets._fixture import NmapScan, Note, Port
 
 BOXES = 'Boxes/Linux'
+PLAYBOOK = 'PEN-200 Playbook'
 
 # --------------------------------------------------------------------------
 # 1. The odd port whose SERVICE name is a guess
@@ -266,11 +267,11 @@ SCENARIOS = [
     Scenario(id='sift-nmap-cert', track='sift', tier='graded', order=30,
              title='HTTPS, and a certificate that says too much',
              body=_CERT, waypoint='recon-cert-names', hone=('nmap',),
-             source=f'{BOXES}/HackTheBox/Busqueda/Busqueda - Writeup.md'),
+             source=f'{PLAYBOOK}/02 - Phase 2 - Network & Service Enumeration.md'),
     Scenario(id='sift-nmap-quiet', track='sift', tier='graded', order=40,
              title='Two open ports, both current',
              body=_QUIET, waypoint='web-discovery', hone=('nmap',),
-             source=f'{BOXES}/HackTheBox/Busqueda/Busqueda - Writeup.md'),
+             source=f'{PLAYBOOK}/02 - Phase 2 - Network & Service Enumeration.md'),
     Scenario(id='sift-nmap-dc', track='sift', tier='graded', order=50,
              title='A Windows host with a lot of open ports',
              body=_DC, waypoint='ad-nocred-enum', hone=('nmap',),
