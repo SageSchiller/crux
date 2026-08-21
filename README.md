@@ -18,7 +18,7 @@ Three tracks:
 ## Running it
 
 ```bash
-python3 -m crux            # from the source tree (opens on the signal-scope splash; --no-splash skips it)
+python3 -m crux            # from the source tree (opens on the CRUX scan-lock splash; --no-splash skips it)
 ./build.sh && dist/crux.pyz   # a single file that needs nothing installed
 python3 -m crux --doctor   # what this terminal and machine support
 ```
@@ -27,11 +27,16 @@ Python 3, standard library only. No pip, no network, ever.
 
 ## Status
 
-**v1.0.0. All three tracks are built, and chain mode threads them into one
-engagement.** Twenty-six `sift` scenarios across seven families, ten `salvage`
-defect classes, seven `conduit` topologies, and the Wexler Corp chain that runs
-all three end to end: read the scan, repair the exploit, pivot to the next
-host.
+**v1.3.0. All three tracks are built, and chain mode threads them into two
+engagements.** Thirty-three `sift` scenarios across ten families, ten
+`salvage` defect classes each grounded in a real CVE, seven `conduit`
+topologies, and two full engagements that run all three tracks end to end: one
+single Linux host, one Active Directory shape.
+
+Scenarios are modelled on real attack chains. `sift` output is the shape the
+tools actually produce; `salvage` and `conduit` run against synthetic targets
+on your own loopback, so crux ships no working exploit for real software and is
+safe to hand to anyone.
 
 See `CRUX-PLAN.md`, which is the file to read first.
 
