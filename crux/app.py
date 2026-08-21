@@ -169,11 +169,19 @@ def run(argv: list[str] | None = None) -> int:
                     out = R.render_lines(caps, screen.render(caps))
                 token = (cols, rows, out)
                 if token != last_paint:
-                    # Erase each line to its end before its newline and erase
-                    # below the last line, so a shorter frame leaves nothing
-                    # of the taller one behind. No full-screen erase, so no
-                    # flash.
-                    painted = ('\x1b[H' + out.replace('\n', '\x1b[K\n')
+                    # **CRLF, not LF.** The terminal is in raw mode, so OPOST
+                    # is off and a bare newline moves down without returning
+                    # the carriage: the next line then starts at the right
+                    # edge, wraps, and eats a second physical row. That is why
+                    # the menu was drawing on every other row with the frame
+                    # underneath showing through between entries, and why so
+                    # few items fitted on screen. The splash always converted;
+                    # the main loop never did.
+                    #
+                    # Erase each line to its end before the break and erase
+                    # below the last one, so a shorter frame leaves nothing of
+                    # a taller one behind. No full-screen erase, so no flash.
+                    painted = ('\x1b[H' + out.replace('\n', '\x1b[K\r\n')
                                + '\x1b[K\x1b[J')
                     tty.write(painted)
                     last_paint = token

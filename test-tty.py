@@ -109,6 +109,64 @@ class Driver:
             os, 'waitstatus_to_exitcode') else status
 
 
+def check_line_endings() -> None:
+    """Every line break the app writes must be CRLF.
+
+    The terminal is in raw mode, so OPOST is off and a bare LF moves the
+    cursor down **without returning the carriage**. The next line then starts
+    at the right edge, wraps, and eats a second physical row: the menu drew on
+    every other row with the previous screen showing through between the
+    entries, and only half as much content fitted. The splash always converted
+    to CRLF and the main loop never did, which is exactly how it shipped.
+    """
+    import fcntl
+    import struct
+    import termios
+    import time
+
+    home = tempfile.mkdtemp(prefix='crux-tty-crlf-')
+    pid, fd = pty.fork()
+    if pid == 0:
+        os.environ['TERM'] = 'xterm-256color'
+        os.environ['XDG_DATA_HOME'] = home
+        os.chdir(str(ROOT))
+        os.execv(sys.executable,
+                 [sys.executable, '-m', 'crux', '--no-alt-screen',
+                  '--no-splash'])
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
+    buf = b''
+    t = time.time()
+    while time.time() - t < 1.0:
+        if select.select([fd], [], [], 0.1)[0]:
+            try:
+                buf += os.read(fd, 65536)
+            except OSError:
+                break
+    # Navigate, so the check covers a repaint and not only the first frame.
+    for _ in range(3):
+        os.write(fd, b'\x1b[B')
+        time.sleep(0.15)
+        while select.select([fd], [], [], 0.1)[0]:
+            try:
+                buf += os.read(fd, 65536)
+            except OSError:
+                break
+    try:
+        os.write(fd, b'q')
+        time.sleep(0.2)
+        os.close(fd)
+    except OSError:
+        pass
+    os.waitpid(pid, 0)
+
+    lone = sum(1 for i, b in enumerate(buf)
+               if b == 0x0A and (i == 0 or buf[i - 1] != 0x0D))
+    ok(lone == 0,
+       f'{lone} bare LFs written in raw mode; every break must be CRLF or the '
+       'menu draws on every other row')
+    ok(buf.count(b'\r\n') > 10, 'and the app really did paint lines')
+
+
 def check_splash() -> None:
     """The opening animation plays, holds, and a key releases it.
 
@@ -285,6 +343,8 @@ def main() -> int:
         code = d.close()
 
     ok(code == 0, f'the app exits cleanly on q (got {code})')
+
+    check_line_endings()
 
     check_splash()
 
