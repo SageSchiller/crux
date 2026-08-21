@@ -85,6 +85,10 @@ class Screen:
     capturing = False
     #: Whether Esc leaves this screen. Only the root sets this False.
     can_pop = True
+    #: Which track's guidance the `?` help should open on. Set by the track
+    #: screens and the play screens so help is about what you are actually
+    #: doing, not a generic page.
+    help_topic: str | None = None
 
     # -- content -----------------------------------------------------------
 
@@ -145,7 +149,7 @@ class Screen:
         # which is the rule 4 failure the footer contract exists to
         # prevent: a key the student was told about that does not work.
         if name == '?' and OPEN_HELP is not None:
-            return push(OPEN_HELP())
+            return push(OPEN_HELP(self.help_topic))
         return STAY
 
     # -- framing -----------------------------------------------------------

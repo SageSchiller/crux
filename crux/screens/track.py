@@ -8,7 +8,7 @@ render identically unless something on the row says otherwise.
 from __future__ import annotations
 
 from ..model import ConduitBody, SalvageBody, StubBody, missing_needs
-from ..render import Caps, Text, line
+from ..render import Caps, Text, line, wrap_rich
 from ..session import Session
 from . import ListScreen, Screen, push, selector
 
@@ -21,6 +21,7 @@ class TrackScreen(ListScreen):
         self.session = session
         self.track_name = track_name
         self.track = session.registry.track(track_name)
+        self.help_topic = track_name
 
     @property
     def title(self) -> str:
@@ -32,6 +33,29 @@ class TrackScreen(ListScreen):
 
     def count(self) -> int:
         return len(self.track.scenarios)
+
+    #: One line each: what a scenario in this track asks of you. Shown above
+    #: the list so a new player knows the goal before opening anything. `?`
+    #: has the full version.
+    _INTRO = {
+        'sift': 'Each is a screen of real tool output. Mark the lines that '
+                'change your next move, then submit.  ? for how.',
+        'salvage': 'Each hands you a broken exploit and a live target. Fix it '
+                   'in your editor and run it.  ? for how.',
+        'conduit': 'Each is a real network you must cross. Edit the tunnel '
+                   'script and run it; crux probes the path.  ? for how.',
+        'chain': 'One full engagement through all three tracks: find the way '
+                 'in, land the exploit, reach the next host.  ? for how.',
+    }
+
+    def header_rows(self, caps: Caps) -> list[Text]:
+        p = caps.palette
+        intro = self._INTRO.get(self.track_name)
+        if not intro:
+            return []
+        rows = wrap_rich(caps, intro, caps.cols - 6, '  ', p.muted, p.accent)
+        rows.append(Text())
+        return rows
 
     def empty_state(self, caps: Caps) -> list[Text]:
         return [line('  No scenarios in this track yet.', caps.palette.muted)]

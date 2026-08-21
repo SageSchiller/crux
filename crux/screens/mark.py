@@ -16,6 +16,7 @@ from __future__ import annotations
 from ..clock import Stopwatch
 from ..model import MarkBody, Scenario, roles
 from ..render import Caps, Text, line, wrap_rich
+from ..provenance import based_on
 from ..scoring import score_marks
 from ..session import Session
 from . import ListScreen, STAY, push, replace, selector
@@ -23,6 +24,8 @@ from . import ListScreen, STAY, push, replace, selector
 
 class MarkScreen(ListScreen):
     """A screen of output, and a cursor that marks what mattered."""
+
+    help_topic = 'sift'
 
     def __init__(self, session: Session, scenario: Scenario,
                  seed: int | None = None, on_done=None) -> None:
@@ -92,8 +95,17 @@ class MarkScreen(ListScreen):
 
     def header_rows(self, caps: Caps) -> list[Text]:
         p = caps.palette
-        rows = wrap_rich(caps, self.body_data.prompt, caps.cols - 6, '  ',
-                         p.muted, p.accent)
+        rows: list[Text] = []
+        label = based_on(self.scenario.source)
+        if label:
+            rows.append(line(f'  based on {label}', p.dim))
+        rows.extend(wrap_rich(caps, self.body_data.prompt, caps.cols - 6, '  ',
+                              p.fg, p.accent))
+        # The mechanic, stated every time rather than assumed. New players do
+        # not know that space marks, that nothing-marked is a real answer, or
+        # that over-marking costs them; press ? for the rest.
+        rows.append(line('  space marks a line   enter submits   '
+                         'mark nothing if there is no lead', p.muted))
         rows.append(Text())
         return rows
 
@@ -215,6 +227,8 @@ class ActScreen(ListScreen):
         self.watch.start()
         self.body_data: MarkBody = scenario.body
 
+    help_topic = 'sift'
+
     @property
     def title(self) -> str:
         return self.scenario.title
@@ -226,9 +240,13 @@ class ActScreen(ListScreen):
 
     def header_rows(self, caps: Caps) -> list[Text]:
         p = caps.palette
-        return [line('  You marked '
-                     f'{len(self.marked)} line{"" if len(self.marked) == 1 else "s"}. '
-                     'What do you do with it?', p.muted), Text()]
+        n = len(self.marked)
+        rows = [line(f'  You marked {n} line{"" if n == 1 else "s"}. Now '
+                     'choose what the lead earns you:', p.fg),
+                line('  the right first move, not just a true statement.',
+                     p.muted),
+                Text()]
+        return rows
 
     def blocks(self, caps: Caps) -> list[list[Text]]:
         p = caps.palette

@@ -47,6 +47,7 @@ def _editor() -> list[str]:
 
 
 class ConduitScreen(Screen):
+    help_topic = 'conduit'
     def __init__(self, session: Session, scenario: Scenario,
                  on_done=None) -> None:
         self.session = session

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from ..clock import fmt
 from ..model import MarkBody, Scenario
+from ..provenance import based_on
 from ..render import Caps, Text, bar, line, wrap_rich
 from ..scoring import Score
 from ..session import Session
@@ -93,9 +94,13 @@ class ResultScreen(ScrollScreen):
             rows.extend(wrap_rich(caps, self.body_data.debrief, caps.cols - 6,
                                   '  ', p.muted, p.accent))
 
-        if self.scenario.waypoint:
+        label = based_on(self.scenario.source)
+        if label or self.scenario.waypoint:
             rows.append(Text())
-            rows.append(line(f'  Waypoint node: {self.scenario.waypoint}', p.info))
+        if label:
+            rows.append(line(f'  based on {label}', p.info))
+        if self.scenario.waypoint:
+            rows.append(line(f'  Waypoint node: {self.scenario.waypoint}', p.dim))
         if self.session.save_error:
             rows.append(line(f'  history not saved: {self.session.save_error}',
                              p.err))

@@ -45,6 +45,7 @@ def _editor() -> list[str]:
 
 
 class SalvageScreen(Screen):
+    help_topic = 'salvage'
     def __init__(self, session: Session, scenario: Scenario,
                  on_done=None) -> None:
         self.session = session

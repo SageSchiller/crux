@@ -115,6 +115,7 @@ class Chain:
 
 
 class ChainIntroScreen(Screen):
+    help_topic = 'chain'
     """The engagement brief, before the first stage."""
 
     def __init__(self, session: Session, scenario: Scenario) -> None:
