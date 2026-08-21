@@ -57,6 +57,12 @@ SCENARIOS = [
                   'terminated with `#`. The proof-of-concept connects, sends, '
                   'and is refused.',
             filename='wexler_frame.py',
+            cve='CVE-2017-0144', models='SMBv1 "EternalBlue"',
+            real_note=(
+                'EternalBlue is the archetype: its SMB packets are '
+                'length-prefixed and offset-sensitive, and a byte count wrong '
+                'by one is a crashed host instead of a shell.'
+            ),
             defects=('length counted over the str, not the encoded bytes',),
             kind='tcp', framing='length',
             banner=b'wexler-sync 2.0 framed\n',

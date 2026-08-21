@@ -54,6 +54,12 @@ SCENARIOS = [
                   'reaches the right endpoint and gets a clean response, and '
                   'nothing is injected.',
             filename='wexler_report.py',
+            cve='CVE-2014-6271', models='Bash "Shellshock"',
+            real_note=(
+                "A Shellshock payload rides in an HTTP header and the '() { :; "
+                "};' prefix and command must survive exactly one decode. "
+                'Over-encode it and the shell is handed text.'
+            ),
             defects=('payload encoded once by hand and again by urlencode',),
             route='/admin/report',
             reject_code=200,

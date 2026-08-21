@@ -78,6 +78,12 @@ SCENARIOS = [
                   'was written for Python 2, which is not installed here. '
                   'Port it and land it.',
             filename='wexler_import.py',
+            cve='CVE-2018-7600', models='Drupal "Drupalgeddon2"',
+            real_note=(
+                'The public Drupalgeddon2 exploits were written for Python 2; '
+                'on a current Kali they will not start until you port them, '
+                'exactly like this one.'
+            ),
             defects=('Python 2 print statement', 'urllib2',
                      'urlencode returns str, not bytes'),
             route='/admin/import',

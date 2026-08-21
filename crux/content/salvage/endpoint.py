@@ -53,6 +53,13 @@ SCENARIOS = [
                   '`/api/v2/upload`, and its `file` parameter is now '
                   '`document`."*',
             filename='wexler_upload.py',
+            cve='CVE-2021-42013', models='Apache httpd 2.4.49/2.4.50',
+            real_note=(
+                'CVE-2021-41773 in Apache 2.4.49 used one traversal payload; '
+                'the 2.4.50 fix was incomplete and CVE-2021-42013 needed a '
+                'double-encoded path. A PoC aimed at the wrong minor version '
+                '404s just like this.'
+            ),
             defects=('endpoint moved between minor versions',
                      'parameter renamed'),
             route='/api/v2/upload',

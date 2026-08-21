@@ -73,6 +73,12 @@ SCENARIOS = [
                   'is `wx-8f21a3c7` and the daemon wants an `AUTH` line '
                   'before it will read a command.',
             filename='wexler_pwn.py',
+            cve='CVE-2021-3156', models='sudo "Baron Samedit"',
+            real_note=(
+                'Baron Samedit and most of exploit-db ship as pwntools scripts. '
+                'On an exam box with no internet and no pip, the twenty-line '
+                'stdlib port is the difference between a shell and nothing.'
+            ),
             defects=('imports pwntools for what socket already does',),
             kind='tcp',
             banner=b'wexler-sync 1.4 ready\n',

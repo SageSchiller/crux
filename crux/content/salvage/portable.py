@@ -56,6 +56,12 @@ SCENARIOS = [
                   '`-e`.** Your listener is on `127.0.0.1:4444`. The request '
                   'is accepted and no shell arrives.',
             filename='wexler_diag.py',
+            cve='CVE-2017-17215', models='Huawei HG532 router',
+            real_note=(
+                'The Huawei HG532 is busybox. Public PoCs that assume bash and '
+                '/dev/tcp hand the router a command it cannot parse, and you '
+                'swap in a busybox-safe reverse shell exactly like this.'
+            ),
             defects=('bash-only redirection syntax', 'bash-only /dev/tcp'),
             route='/cgi-bin/diag',
             reject_code=200,

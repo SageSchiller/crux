@@ -129,6 +129,16 @@ class SalvageBody:
     solution: str
     requirements: tuple
     defects: tuple[str, ...] = ()
+    #: The real CVE and product this exercise is modelled on, shown in-app so
+    #: it reads as grounded rather than invented. The target itself stays a
+    #: synthetic loopback stand-in (crux D7): the exploit and the defect are
+    #: the real ones, the vulnerable service is not.
+    cve: str = ''
+    models: str = ''
+    #: One sentence on how this defect actually broke the real public PoC for
+    #: `cve`. Shown after the debrief, so the exercise closes on the real
+    #: engagement it is drawn from rather than the synthetic one it ran against.
+    real_note: str = ''
     kind: str = 'http'                  # http | tcp
     route: str = '/'
     banner: bytes = b''

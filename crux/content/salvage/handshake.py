@@ -57,6 +57,12 @@ SCENARIOS = [
                   'proof-of-concept connects and gets refused. **You already '
                   'recovered a sync token: `wx-8f21a3c7`.**',
             filename='wexler_sync.py',
+            cve='CVE-2015-3306', models='ProFTPD mod_copy',
+            real_note=(
+                'The ProFTPD mod_copy exploit must send SITE CPFR then SITE '
+                'CPTO in order; a PoC that jumps to the copy without the setup '
+                'is refused, the same shape as the missing AUTH here.'
+            ),
             defects=('skips the AUTH step the daemon requires',),
             kind='tcp',
             banner=b'wexler-sync 1.4 ready\n',

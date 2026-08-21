@@ -27,8 +27,10 @@ _REAL = (
     'methodology; each one shows what it is based on. `salvage` and `conduit` '
     'run against **synthetic targets on your own loopback**, on purpose: crux '
     'is safe to hand to anyone and ships no working exploit for real software. '
-    'The defect classes and the tunnelling techniques are exactly the real '
-    'ones; only the fictional target is invented.'
+    'Each `salvage` exercise is modelled on a real CVE: Drupalgeddon2, '
+    'Shellshock, EternalBlue, the Apache 2.4.49/2.4.50 traversal and more, '
+    'and names it; the defect you fix is the one that broke that real public '
+    'PoC. Only the vulnerable service is a stand-in.'
 )
 
 _TOPICS = {
@@ -44,7 +46,7 @@ _TOPICS = {
              'again to unmark it. When you have marked what matters, press '
              '**enter** to submit. Then pick what the lead earns you.'),
             ('The catch',
-             'Some screens have **no lead at all** — the honest common '
+             'Some screens have **no lead at all**, the honest common '
              'case. When that is true, the right answer is to submit with '
              'nothing marked and move on.'),
             ('How you are scored',
@@ -67,8 +69,8 @@ _TOPICS = {
              'target, so it tells you exactly which condition your request '
              'still misses. **g** gives up and shows the answer.'),
             ('The habit',
-             'Read it before you run it. A stranger’s script can do more '
-             'than the thing you wanted, and one scenario here will prove it.'),
+             'Read it before you run it. A script you did not write can do '
+             'more than you wanted, and one scenario here will prove it.'),
             ('How you are scored',
              'It landed, or it did not. An exploit that meets three of four '
              'conditions still does not work, so the score is landed / not, '
@@ -92,7 +94,7 @@ _TOPICS = {
              'Where that is true the track says so and scores nothing, rather '
              'than pretending.'),
             ('How you are scored',
-             'The path opened, or it did not — proven by a real probe '
+             'The path opened, or it did not: proven by a real probe '
              'from where it has to succeed.'),
         ],
     ),
@@ -106,7 +108,7 @@ _TOPICS = {
              'three.'),
             ('How to play',
              'Each stage plays exactly like its own track. Finish a stage and '
-             'it bridges to the next. A stumble does not end the run — '
+             'it bridges to the next. A stumble does not end the run: '
              'you reach all three stages, and the result is honest about '
              'which fell.'),
         ],

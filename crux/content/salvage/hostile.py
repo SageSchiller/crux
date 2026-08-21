@@ -80,6 +80,12 @@ SCENARIOS = [
                   'a template. It came from a mirror; the original author '
                   'page is gone. It is reported to work as-is.',
             filename='wexler_forge.py',
+            cve='CVE-2023-35829', models='a trojaned public PoC',
+            real_note=(
+                'This is not hypothetical: fake PoCs for CVE-2023-35829 and for '
+                'the F5 CVE-2022-1388 were published as malware that ran on the '
+                "analyst's own box. Read it before you run it."
+            ),
             defects=('phones an address of its own before doing anything',),
             route='/admin/import',
             reject_code=400,

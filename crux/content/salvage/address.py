@@ -62,6 +62,12 @@ SCENARIOS = [
                   'without an error, which is the problem. **Your listener is '
                   'on `127.0.0.1:4444`.**',
             filename='wexler_schedule.py',
+            cve='CVE-2019-15107', models='Webmin',
+            real_note=(
+                "Webmin reverse-shell PoCs hardcode the author's LHOST and "
+                'LPORT in the payload. Run one unedited and the shell is '
+                'offered to a machine that stopped being theirs years ago.'
+            ),
             defects=('hardcoded LHOST from the author lab',
                      'hardcoded LPORT'),
             route='/admin/schedule',

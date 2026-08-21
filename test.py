@@ -505,6 +505,10 @@ def test_salvage_content() -> None:
         ok(all(q.hint for q in b.requirements),
            f'{sc.id}: every requirement can explain itself')
         ok(bool(b.defects), f'{sc.id}: names its defect classes')
+        ok(b.cve.startswith('CVE-') and b.models,
+           f'{sc.id}: is grounded in a real CVE and product')
+        ok(bool(b.real_note),
+           f'{sc.id}: carries an in-the-wild note tying it to the real PoC')
         rendered = b.render(b.broken, 'http://127.0.0.1:1', 1)
         # Not a bare '{{' check: the template-injection payload legitimately
         # contains one, which is the whole point of that scenario.

@@ -88,6 +88,10 @@ class RunResultScreen(ScrollScreen):
                 caps.cols - 6, '  ', p.warn, p.accent))
             rows.append(Text())
 
+        if self.body_data.cve:
+            src = (f'{self.body_data.cve} ({self.body_data.models})'
+                   if self.body_data.models else self.body_data.cve)
+            rows.append(line(f'  modelled on {src}', p.info))
         if self.body_data.defects:
             rows.append(line('  defects in the original: '
                              + ', '.join(self.body_data.defects), p.dim))
@@ -95,6 +99,11 @@ class RunResultScreen(ScrollScreen):
             rows.append(Text())
             rows.extend(wrap_rich(caps, self.body_data.debrief, caps.cols - 6,
                                   '  ', p.muted, p.accent))
+        if self.body_data.real_note:
+            rows.append(Text())
+            rows.extend(wrap_rich(caps, '**In the wild.** '
+                                  + self.body_data.real_note, caps.cols - 6,
+                                  '  ', p.info, p.accent))
         return rows
 
     def hints(self, caps: Caps) -> list[tuple[str, str]]:

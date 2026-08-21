@@ -225,7 +225,13 @@ class SalvageScreen(Screen):
             return [line(f'  {self.error}', p.err), Text(),
                     line('  Nothing is scored on this screen.', p.dim)]
 
-        rows = wrap_rich(caps, b.brief, caps.cols - 6, '  ', p.fg, p.accent)
+        rows = []
+        if b.cve:
+            src = f'{b.cve} ({b.models})' if b.models else b.cve
+            rows.append(line(f'  modelled on {src}   '
+                             '(safe local stand-in)', p.dim))
+        rows.extend(wrap_rich(caps, b.brief, caps.cols - 6, '  ', p.fg,
+                              p.accent))
         rows.append(Text())
         rows.append(line(f'  target   {self.url}', p.info))
         rows.append(line(f'  file     {self.path}', p.info))
