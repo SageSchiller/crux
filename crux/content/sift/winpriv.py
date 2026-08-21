@@ -31,11 +31,21 @@ _IMPERSONATE = MarkBody(
         privs=(
             Priv('SeImpersonatePrivilege',
                  'Impersonate a client after authentication', 'Enabled',
-                 kind='lead'),
+                 kind='lead',
+                 why='The shortest path to SYSTEM on Windows. Held by nearly '
+                     'every service account, and the potato family turns it '
+                     'into SYSTEM in one command.'),
             Priv('SeCreateGlobalPrivilege', 'Create global objects',
-                 'Enabled', kind='decoy'),
+                 'Enabled', kind='decoy',
+                 why='It looks the part and grants nothing: creating global '
+                     'section objects is a normal service-account permission. '
+                     'It keeps company with the real finding, which is why it '
+                     'tempts.'),
             Priv('SeAssignPrimaryTokenPrivilege',
-                 'Replace a process level token', 'Disabled', kind='decoy'),
+                 'Replace a process level token', 'Disabled', kind='decoy',
+                 why='Right family, wrong row: it is Disabled, and the enabled '
+                     'one above already gives the same outcome. Read the State '
+                     'column, not only the name.'),
         ),
     ),
     actions=(
@@ -88,7 +98,10 @@ _NO_IMPERSONATE = MarkBody(
         user='harbord\\daniel',
         privs=(
             Priv('SeIncreaseWorkingSetPrivilege',
-                 'Increase a process working set', 'Disabled', kind='decoy'),
+                 'Increase a process working set', 'Disabled', kind='decoy',
+                 why='On every account on every Windows machine. Learning the '
+                     'stock list by sight is what makes an interesting line '
+                     'unmissable when one does appear.'),
         ),
     ),
     actions=(
@@ -141,9 +154,15 @@ _ICACLS = MarkBody(
         rows=(
             Note('C:\\Log-Management\\job.bat NT AUTHORITY\\SYSTEM:(I)(F)'),
             Note('                           BUILTIN\\Administrators:(I)(F)'),
-            Note('                           BUILTIN\\Users:(F)', 'lead'),
+            Note('                           BUILTIN\\Users:(F)', 'lead',
+                 why='Full control for every authenticated user, you included, '
+                     'over a file the schtasks output says SYSTEM runs. Two '
+                     'screens, one finding.'),
             Note('                           NT AUTHORITY\\'
-                 'Authenticated Users:(I)(M)', 'decoy'),
+                 'Authenticated Users:(I)(M)', 'decoy',
+                 why='Modify would often be enough, but it is inherited (I) '
+                     'while the line above is a directly-applied (F). Read the '
+                     'flags: (I) inherited, (F) full, (M) modify.'),
         ),
         noise_pool=(
             Note('                           CREATOR OWNER:(I)(OI)(CI)(IO)(F)'),
@@ -203,8 +222,15 @@ _SERVICE = MarkBody(
             Note('        TYPE               : 10  WIN32_OWN_PROCESS'),
             Note('        START_TYPE         : 2   AUTO_START'),
             Note('        BINARY_PATH_NAME   : C:\\Program Files\\Vantage '
-                 'Security\\agent service\\agent.exe', 'lead'),
-            Note('        SERVICE_START_NAME : LocalSystem', 'decoy'),
+                 'Security\\agent service\\agent.exe', 'lead',
+                 why='Spaces and no quotes, so Windows tries C:\\Program.exe, '
+                     'then C:\\Program Files\\Vantage.exe. Paired with a '
+                     'writable directory on that path it is code execution as '
+                     'whatever the service runs as.'),
+            Note('        SERVICE_START_NAME : LocalSystem', 'decoy',
+                 why='It says what the finding is worth, not what the finding '
+                     'is. Plenty of services run as LocalSystem and are '
+                     'perfectly safe.'),
             Note('        DISPLAY_NAME       : Vantage Security Agent'),
         ),
         noise_pool=(

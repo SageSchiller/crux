@@ -74,9 +74,13 @@ class RunResultScreen(ScrollScreen):
             t.add(caps.g('check') if ok else caps.g('cross'),
                   p.ok if ok else p.err)
             t.add(f' {q.name}', p.fg if ok else p.muted)
-            if not ok and q.hint:
-                t.add(f'   {q.hint}', p.dim)
             rows.append(t)
+            # Wrapped underneath, not appended to the same line. On one line
+            # the hint was clipped by the frame, which threw away the only
+            # sentence that says what is still wrong.
+            if not ok and q.hint:
+                rows.extend(wrap_rich(caps, q.hint, caps.cols - 10, '      ',
+                                      p.warn, p.accent))
         rows.append(Text())
 
         if s.read_first is False and not self.tripped:

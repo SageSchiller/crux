@@ -36,9 +36,18 @@ _STAGE1 = MarkBody(
     fixture=SmbShares(
         host='10.9.0.2', netbios='JUMP01', domain='northwind.local',
         shares=(
-            Share('deploy$', 'Disk', 'Deployment staging', kind='lead'),
-            Share('SYSVOL', 'Disk', 'Logon server share', kind='decoy'),
-            Share('IPC$', 'IPC', 'Remote IPC', kind='decoy'),
+            Share('deploy$', 'Disk', 'Deployment staging', kind='lead',
+                  why='A trailing `$` makes a share hidden, not protected, and '
+                      'anonymous access reached it anyway. A staging share is '
+                      'where deployment tooling, its configuration and its '
+                      'credentials live.'),
+            Share('SYSVOL', 'Disk', 'Logon server share', kind='decoy',
+                  why='The right technique on the wrong host: SYSVOL is served '
+                      'by a domain controller and needs an authenticated '
+                      'session, and you have neither yet.'),
+            Share('IPC$', 'IPC', 'Remote IPC', kind='decoy',
+                  why='On every Windows host ever built. It finds names, not a '
+                      'way in, and its presence here is not the finding.'),
         ),
     ),
     actions=(

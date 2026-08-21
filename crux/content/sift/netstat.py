@@ -19,9 +19,19 @@ _LOOPBACK = MarkBody(
            'outside found only 22 and 8000. Mark every line that changes what '
            'you do next.',
     fixture=NetstatDump(sockets=(
-        Socket('tcp', '0.0.0.0:22', program='-', kind='decoy'),
-        Socket('tcp', '0.0.0.0:8000', program='841/ttyd', kind='decoy'),
-        Socket('tcp', '127.0.0.1:65432', program='912/python3', kind='lead'),
+        Socket('tcp', '0.0.0.0:22', program='-', kind='decoy',
+               why='Already reachable from outside, so your scan already had '
+                   'it, and you already have a shell on this host. Nothing '
+                   'here is new information.'),
+        Socket('tcp', '0.0.0.0:8000', program='841/ttyd', kind='decoy',
+               why='You came in through it. Re-attacking your own entry point '
+                   'is the most comfortable thing on the screen and the least '
+                   'productive.'),
+        Socket('tcp', '127.0.0.1:65432', program='912/python3', kind='lead',
+               why='The only line your external scan could not have seen. A '
+                   'service bound to loopback was deliberately not exposed, '
+                   'which usually means it is less defended than the things '
+                   'that were.'),
         Socket('tcp', '127.0.0.53:53', program='-'),
         Socket('tcp6', ':::8000', program='841/ttyd'),
         Socket('udp', '0.0.0.0:68', state='', program='-'),
@@ -61,11 +71,22 @@ _ALREADY_KNOWN = MarkBody(
            'found 22, 80 and 3306. Mark every line that changes what you do '
            'next.',
     fixture=NetstatDump(sockets=(
-        Socket('tcp', '0.0.0.0:22', program='-', kind='decoy'),
+        Socket('tcp', '0.0.0.0:22', program='-', kind='decoy',
+               why='Already reachable from outside, so your scan already had '
+                   'it, and you already have a shell on this host. Nothing '
+                   'here is new information.'),
         Socket('tcp', '0.0.0.0:80', program='-'),
-        Socket('tcp', '0.0.0.0:3306', program='912/mysqld', kind='decoy'),
-        Socket('tcp', '127.0.0.1:6379', program='744/redis-server', kind='lead'),
-        Socket('tcp', '127.0.0.1:11211', program='801/memcached', kind='lead'),
+        Socket('tcp', '0.0.0.0:3306', program='912/mysqld', kind='decoy',
+               why='Reachable from outside, so it was already in your scan. It '
+                   'is the defended surface, and the one an administrator '
+                   'expected to protect.'),
+        Socket('tcp', '127.0.0.1:6379', program='744/redis-server', kind='lead',
+               why='Redis defaults to no authentication because its authors '
+                   'assumed it would never be exposed. From a shell on the '
+                   'host that assumption is already false.'),
+        Socket('tcp', '127.0.0.1:11211', program='801/memcached', kind='lead',
+               why='The same class again: a data store trusting the network '
+                   'boundary you are now inside of.'),
         Socket('tcp', '127.0.0.53:53', program='-'),
         Socket('udp', '0.0.0.0:68', state='', program='-'),
     )),
@@ -99,9 +120,17 @@ _NOTHING_HIDDEN = MarkBody(
     prompt='You have a shell on the target. Your scan from outside found 22 '
            'and 443. Mark every line that changes what you do next.',
     fixture=NetstatDump(sockets=(
-        Socket('tcp', '0.0.0.0:22', program='-', kind='decoy'),
-        Socket('tcp', '0.0.0.0:443', program='1021/nginx', kind='decoy'),
-        Socket('tcp', '127.0.0.53:53', program='-', kind='decoy'),
+        Socket('tcp', '0.0.0.0:22', program='-', kind='decoy',
+               why='Already reachable from outside, so your scan already had '
+                   'it, and you already have a shell on this host. Nothing '
+                   'here is new information.'),
+        Socket('tcp', '0.0.0.0:443', program='1021/nginx', kind='decoy',
+               why='Already reachable from outside and already in your scan. '
+                   'Nothing here is hidden from you.'),
+        Socket('tcp', '127.0.0.53:53', program='-', kind='decoy',
+               why='systemd-resolved, on every modern Ubuntu, listening on a '
+                   'loopback address that is not 127.0.0.1. The rule is '
+                   '"loopback-only AND not stock", not just loopback-only.'),
         Socket('tcp6', ':::443', program='1021/nginx'),
         Socket('udp', '0.0.0.0:68', state='', program='-'),
         Socket('udp', '127.0.0.53:53', state='', program='-'),

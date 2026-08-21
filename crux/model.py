@@ -42,11 +42,21 @@ class ContentError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class Line:
-    """One line of a sift fixture."""
+    """One line of a sift fixture.
+
+    `why` is what this line meant, shown on the result screen against the
+    verdict for it. Every `lead` and every `decoy` should carry one: the score
+    tells a student *that* they missed something or chased something, and only
+    this tells them **why that line was the lead** or **why that one was a
+    trap**, which is the whole thing the track is trying to teach. Noise needs
+    none, because there is nothing to say about a line that was only ever
+    furniture.
+    """
 
     id: str
     text: str
     kind: str = 'noise'
+    why: str = ''
 
     def __post_init__(self) -> None:
         if self.kind not in LINE_KINDS:

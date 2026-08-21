@@ -28,10 +28,20 @@ _ODDPORT = MarkBody(
         version_scan=False,
         noise=(1, 3),
         ports=(
-            Port(21, 'ftp', kind='decoy'),
+            Port(21, 'ftp', kind='decoy',
+                 why='Real, and real furniture. FTP on 21 is on the top-1000 '
+                     'list because it is everywhere; it is worth ten minutes, '
+                     'not first.'),
             Port(22, 'ssh'),
-            Port(80, 'http', kind='decoy'),
-            Port(5437, 'pmip6-data', kind='lead'),
+            Port(80, 'http', kind='decoy',
+                 why='An ordinary web server on the ordinary port. Worth '
+                     'content discovery eventually, but it is the thing every '
+                     'host has.'),
+            Port(5437, 'pmip6-data', kind='lead',
+                 why='Nothing standard listens on 5437, and without `-sV` that '
+                     'SERVICE name is a guess from a lookup table rather than '
+                     'an identification. A port nobody normally uses is the '
+                     'most interesting thing on the screen.'),
         ),
     ),
     actions=(
@@ -75,11 +85,19 @@ _PINNED = MarkBody(
         noise=(0, 2),
         os_line='Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel',
         ports=(
-            Port(22, 'ssh', 'OpenSSH 8.9p1 Ubuntu 3ubuntu0.4', kind='decoy'),
+            Port(22, 'ssh', 'OpenSSH 8.9p1 Ubuntu 3ubuntu0.4', kind='decoy',
+                 why='Open on nearly every Linux host and almost never the way '
+                     'in. SSH gets parked until you hold a credential.'),
             Port(80, 'http', 'Apache httpd 2.4.52 ((Ubuntu))'),
             Port(111, 'rpcbind', '2-4 (RPC #100000)', kind='decoy',
-                 state='filtered'),
-            Port(3000, 'http', 'Gitea 1.19.1', kind='lead'),
+                 state='filtered',
+                 why='`filtered` is not `open`. A packet went out and nothing '
+                     'came back, which is a firewall telling you nothing.'),
+            Port(3000, 'http', 'Gitea 1.19.1', kind='lead',
+                 why='A named third-party product pinned to an exact version, '
+                     'on a non-standard port. That is a searchable advisory '
+                     'and, for this product, repository and user names before '
+                     'you hold any credential at all.'),
         ),
     ),
     actions=(
@@ -123,13 +141,24 @@ _CERT = MarkBody(
             )),
             Port(443, 'ssl/http', 'nginx 1.22.1', scripts=(
                 Note('| ssl-cert: Subject: commonName=staging.internal.corp',
-                     'lead'),
+                     'lead',
+                     why='The certificate is the server naming itself. That is '
+                         'a free hostname disclosure, and hostnames are how '
+                         'you reach virtual hosts that the default site '
+                         'hides.'),
                 Note('| Subject Alternative Name: DNS:staging.internal.corp, '
-                     'DNS:git.internal.corp', 'lead'),
+                     'DNS:git.internal.corp', 'lead',
+                     why='A second name the server answers to that you have '
+                         'not visited. `git.` is not serving on the default '
+                         'vhost, which is exactly why it is worth asking for '
+                         'by name.'),
                 Note('| Not valid before: 2026-01-14T09:22:10'),
                 Note('|_Not valid after:  2027-01-14T09:22:10'),
                 Note('|_ssl-date: TLS randomness does not represent time'),
-                Note('|_http-server-header: nginx/1.22.1', 'decoy'),
+                Note('|_http-server-header: nginx/1.22.1', 'decoy',
+                     why='The same current, stock version already on the '
+                         'screen twice. Repetition is confirmation, not a '
+                         'finding.'),
             )),
         ),
     ),
@@ -169,10 +198,14 @@ _QUIET = MarkBody(
         noise=(0, 1),
         os_line='Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel',
         ports=(
-            Port(22, 'ssh', 'OpenSSH 9.6p1 Ubuntu 3ubuntu13.5', kind='decoy'),
+            Port(22, 'ssh', 'OpenSSH 9.6p1 Ubuntu 3ubuntu13.5', kind='decoy',
+                 why='Current and patched. Searching this version is the most '
+                     'reliable way to spend an hour on nothing.'),
             Port(80, 'http', 'Apache httpd 2.4.58 ((Ubuntu))', scripts=(
                 Note('|_http-title: Bertram Industrial Supplies'),
-                Note('|_http-server-header: Apache/2.4.58 (Ubuntu)', 'decoy'),
+                Note('|_http-server-header: Apache/2.4.58 (Ubuntu)', 'decoy',
+                     why='The distribution build at the distribution version, '
+                         'repeating what the version column already said.'),
             )),
         ),
     ),
@@ -213,18 +246,33 @@ _DC = MarkBody(
         noise=(0, 1),
         ports=(
             Port(53, 'domain', 'Simple DNS Plus'),
-            Port(88, 'kerberos-sec', 'Microsoft Windows Kerberos', kind='lead'),
+            Port(88, 'kerberos-sec', 'Microsoft Windows Kerberos', kind='lead',
+                 why='Kerberos on 88 means this is a domain controller, which '
+                     'reframes the whole box: the target stops being a host '
+                     'and becomes a directory.'),
             Port(135, 'msrpc', 'Microsoft Windows RPC'),
             Port(139, 'netbios-ssn', 'Microsoft Windows netbios-ssn'),
             Port(389, 'ldap', 'Microsoft Windows Active Directory LDAP '
-                 '(Domain: sentinel.local)', kind='lead'),
-            Port(445, 'microsoft-ds', '', kind='decoy'),
+                 '(Domain: sentinel.local)', kind='lead',
+                 why='LDAP announcing the domain name. That string is the '
+                     'single most valuable thing on the screen: nearly every '
+                     'Active Directory tool takes it as an argument, and you '
+                     'should never guess it.'),
+            Port(445, 'microsoft-ds', '', kind='decoy',
+                 why='On essentially every Windows host. A real next step once '
+                     'you know it is a DC, but not the thing that told you.'),
             Port(464, 'kpasswd5', ''),
             Port(593, 'ncacn_http', 'Microsoft Windows RPC over HTTP 1.0'),
             Port(3268, 'ldap', 'Microsoft Windows Active Directory LDAP '
-                 '(Domain: sentinel.local)', kind='decoy'),
+                 '(Domain: sentinel.local)', kind='decoy',
+                 why='The Global Catalog, the same directory on a second '
+                     'port. Confirmation of what 389 already said, not a '
+                     'second target.'),
             Port(3389, 'ms-wbt-server', 'Microsoft Terminal Services',
-                 kind='decoy'),
+                 kind='decoy',
+                 why='Present on most Windows servers and useless without a '
+                     'credential. The identity infrastructure is the target '
+                     'here, not the remote desktop.'),
         ),
     ),
     actions=(

@@ -27,9 +27,15 @@ _DESCRIPTION = MarkBody(
             DirUser('michael.wrightson', 'Account created by IT'),
             DirUser('david.orelious',
                     'Just in case I forget my password is aRt$Lp#7t*VQ!3',
-                    kind='lead'),
+                    kind='lead',
+                    why='Somebody wrote a working password into a '
+                        'world-readable field. Validate it against every '
+                        'account, not only this one: reuse is the norm.'),
             DirUser('emily.oscars', 'Password must be changed on next logon',
-                    kind='decoy'),
+                    kind='decoy',
+                    why='The standard text an administrator types when setting '
+                        'a flag, not a hint about the value. It reads like a '
+                        'lead and is boilerplate.'),
             DirUser('john.smoulder', ''),
         ),
     ),
@@ -71,11 +77,22 @@ _FLAGS = MarkBody(
         noise=(6, 9),
         users=(
             DirUser('svc_web', 'IIS application pool', flags='DONT_REQ_PREAUTH',
-                    kind='lead'),
+                    kind='lead',
+                    why='DONT_REQ_PREAUTH means Kerberos will hand encrypted '
+                        'material for this account to anyone who asks. It '
+                        'costs nothing, it is silent, and it needs no '
+                        'credential at all.'),
             DirUser('svc_backup', 'Nightly backup job', flags='NORMAL_ACCOUNT',
-                    kind='decoy'),
+                    kind='decoy',
+                    why='Right family of attack, wrong row: NORMAL_ACCOUNT is '
+                        'the default flag on every user in the directory, and '
+                        'nothing here says it has an SPN.'),
             DirUser('a.mcintyre', 'Domain Admin - do not disable',
-                    kind='decoy'),
+                    kind='decoy',
+                    why='The most attractive line and the least actionable. It '
+                        'tells you where you are going, not how to get there, '
+                        'and a description is not authoritative about group '
+                        'membership anyway.'),
         ),
     ),
     actions=(
@@ -116,8 +133,14 @@ _QUIET_DIR = MarkBody(
         noise=(7, 10),
         users=(
             DirUser('svc_sched', 'Scheduled tasks', flags='NORMAL_ACCOUNT',
-                    kind='decoy'),
-            DirUser('p.nguyen', 'Finance - starter 2024', kind='decoy'),
+                    kind='decoy',
+                    why='A name that looks like a service account is not '
+                        'evidence of an SPN, and Kerberoasting needs a domain '
+                        'credential you do not have yet.'),
+            DirUser('p.nguyen', 'Finance - starter 2024', kind='decoy',
+                    why='A story built out of a date in a description. It '
+                        'could be true, and nothing on this screen supports '
+                        'it.'),
         ),
     ),
     actions=(

@@ -33,11 +33,18 @@ _STAGE1 = MarkBody(
         noise=(0, 2),
         os_line='Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel',
         ports=(
-            Port(22, 'ssh', 'OpenSSH 8.9p1 Ubuntu 3ubuntu0.4', kind='decoy'),
+            Port(22, 'ssh', 'OpenSSH 8.9p1 Ubuntu 3ubuntu0.4', kind='decoy',
+                 why='Open on nearly every Linux host and almost never the way '
+                     'in. It gets parked until you hold a credential, not '
+                     'attacked because it is there.'),
             Port(80, 'http', 'Apache httpd 2.4.52 ((Ubuntu))', scripts=(
                 Note('|_http-title: Wexler Corp'),
             )),
-            Port(8080, 'http', 'Wexler CMS 2.0', kind='lead', scripts=(
+            Port(8080, 'http', 'Wexler CMS 2.0', kind='lead',
+                 why='A named third-party product pinned to an exact version, '
+                     'on a non-standard port. The Apache on 80 is the front '
+                     'door everyone sees; this is the one with the exploit.',
+                 scripts=(
                 Note('|_http-title: Wexler CMS - Sign in'),
             )),
         ),

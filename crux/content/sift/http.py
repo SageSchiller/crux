@@ -21,10 +21,20 @@ _HEADERS = MarkBody(
     fixture=HttpResponse(
         status='HTTP/1.1 200 OK',
         headers=(
-            Note('Server: Werkzeug/2.2.2 Python/3.9.2', 'lead'),
-            Note('X-Powered-By: Flask', 'decoy'),
+            Note('Server: Werkzeug/2.2.2 Python/3.9.2', 'lead',
+                 why='The finding is the class of server, not the version. '
+                     'Werkzeug is a development server that was never meant to '
+                     'face a network; where one does, the interactive debugger '
+                     'is one URL away and it is a Python shell.'),
+            Note('X-Powered-By: Flask', 'decoy',
+                 why='It says the same thing the Server header already did, '
+                     'less precisely. Two headers agreeing is confirmation, '
+                     'not two findings.'),
             Note('Set-Cookie: session=eyJ1c2VyIjoiZ3Vlc3QifQ.ZbQ; Path=/',
-                 'decoy'),
+                 'decoy',
+                 why='Genuinely worth decoding, and it will say '
+                     '`{"user":"guest"}`. Forging one needs the signing key, '
+                     'so it is the longer path of the two on this screen.'),
             Note('X-Frame-Options: SAMEORIGIN'),
             Note('X-Content-Type-Options: nosniff'),
         ),
@@ -77,16 +87,25 @@ _SOURCE = MarkBody(
             Note('<title>Bertram Industrial - Sign in</title>'),
             Note('<link rel="stylesheet" href="/css/bootstrap.min.css">'),
             Note('<!-- TODO: remove test account before go-live '
-                 '(svc_test / Wint3r2025!) -->', 'lead'),
+                 '(svc_test / Wint3r2025!) -->', 'lead',
+                 why='A developer left working credentials in a comment that '
+                     'ships to every visitor. Spray the pair at SSH and any '
+                     'other login before spending it on this form.'),
             Note('</head><body>'),
             Note('<form action="/auth.php" method="post">'),
             Note('  <input type="text" name="username" id="username">'),
             Note('  <input type="password" name="password" id="password">'),
             Note('  <input type="hidden" name="csrf" value="a91f0c22b7">',
-                 'decoy'),
+                 'decoy',
+                 why='Attacking a CSRF token means attacking a defence against '
+                     'an attack you are not performing. You want to log in, '
+                     'not to make somebody else log in.'),
             Note('  <button type="submit">Sign in</button>'),
             Note('</form>'),
-            Note('<script src="/js/app.min.js"></script>', 'decoy'),
+            Note('<script src="/js/app.min.js"></script>', 'decoy',
+                 why='A genuinely good habit and often productive, but it is a '
+                     'search, and there is a working credential four lines '
+                     'above it.'),
             Note('</body></html>'),
         ),
     ),

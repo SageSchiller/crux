@@ -29,11 +29,18 @@ _NTLM = MarkBody(
                 '[*] Dumping local SAM hashes (uid:rid:lmhash:nthash)'),
         rows=(
             Note('Administrator:500:aad3b435b51404eeaad3b435b51404ee:'
-                 '31d6cfe0d16ae931b73c59d7e0c089c0:::', 'decoy'),
+                 '31d6cfe0d16ae931b73c59d7e0c089c0:::', 'decoy',
+                 why='The most attractive name on the screen and an empty '
+                     'password: 31d6cfe0d16ae931b73c59d7e0c089c0 is the NT '
+                     'hash of the empty string, and it appears here four '
+                     'times.'),
             Note('Guest:501:aad3b435b51404eeaad3b435b51404ee:'
                  '31d6cfe0d16ae931b73c59d7e0c089c0:::'),
             Note('svc_backup:1008:aad3b435b51404eeaad3b435b51404ee:'
-                 'a0de4d7f81676c3ea9eabcadfd2536f6:::', 'lead'),
+                 'a0de4d7f81676c3ea9eabcadfd2536f6:::', 'lead',
+                 why='The only account here with a real NT hash. And it does '
+                     'not need cracking: an NT hash IS the credential for NTLM '
+                     'authentication, so pass it straight at the network.'),
             Note('DefaultAccount:503:aad3b435b51404eeaad3b435b51404ee:'
                  '31d6cfe0d16ae931b73c59d7e0c089c0:::'),
         ),
@@ -89,11 +96,22 @@ _FORMATS = MarkBody(
         header=('loot/collected.txt',),
         rows=(
             Note('web/config.php   $2y$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p'
-                 '92ldGxad68LJZdL17lhWy', 'decoy'),
+                 '92ldGxad68LJZdL17lhWy', 'decoy',
+                 why='bcrypt at cost 10, deliberately slow. Reuse is a real '
+                     'argument for wanting it and the arithmetic is still '
+                     'against you: orders of magnitude slower per guess than '
+                     'the ticket.'),
             Note('kerberoast.txt   $krb5tgs$23$*svc_sql$CORP.LOCAL$'
-                 'MSSQLSvc/db01.corp.local*$a1b2c3...', 'lead'),
+                 'MSSQLSvc/db01.corp.local*$a1b2c3...', 'lead',
+                 why='A service ticket encrypted with the service account '
+                     'password. Fast to attack, and those passwords are often '
+                     'old, human-chosen and never rotated, which is why '
+                     'kerberoasting pays out so often.'),
             Note('shadow.bak       root:$6$xyz$3kPq...:19700:0:99999:7:::',
-                 'decoy'),
+                 'decoy',
+                 why='SHA-512-crypt with thousands of rounds. Also '
+                     'deliberately slow, and you already hold a faster target '
+                     'on the same screen.'),
             Note('notes.txt        33d81ad509ef34a2635903babb285882'),
         ),
         noise_pool=(
@@ -148,11 +166,19 @@ _NOT_A_HASH = MarkBody(
     fixture=TextBlock(
         header=('loot/second-pass.txt',),
         rows=(
-            Note('backup.ps1       $cred = "Summer2025!Rotate"', 'decoy'),
+            Note('backup.ps1       $cred = "Summer2025!Rotate"', 'decoy',
+                 why='Already a credential. There is nothing to crack: spray '
+                     'it at every account and move.'),
             Note('web.config       <add key="ApiKey" value='
-                 '"7f2c1e9a4b6d8f03" />', 'decoy'),
+                 '"7f2c1e9a4b6d8f03" />', 'decoy',
+                 why='A key, not a digest of anything. Cracking recovers an '
+                     'input that produced a hash; there is no input behind an '
+                     'API key.'),
             Note('id_rsa           -----BEGIN OPENSSH PRIVATE KEY----- '
-                 '(no passphrase)', 'decoy'),
+                 '(no passphrase)', 'decoy',
+                 why='ssh2john exists for keys that ARE passphrase-protected. '
+                     'This one says it is not, so there is nothing to recover: '
+                     'use it.'),
             Note('session.txt      eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyIjoiZ3Vlc3Qi'
                  'fQ.Xy'),
         ),

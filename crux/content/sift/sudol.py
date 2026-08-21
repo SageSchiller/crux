@@ -29,9 +29,16 @@ _WILDCARD = MarkBody(
         user='www-data', host='app02',
         grants=(
             Grant('(root) NOPASSWD: /usr/bin/composer --working-dir=/var/www/'
-                  'html/portal *', kind='lead'),
+                  'html/portal *', kind='lead',
+                  why='The trailing `*` is the finding. It lets you pass '
+                      'arguments the sudoers author never enumerated, and '
+                      'composer runs scripts from a file you control in a '
+                      'directory you can write to.'),
             Grant('(root) NOPASSWD: /usr/bin/systemctl daemon-reload',
-                  kind='decoy'),
+                  kind='decoy',
+                  why='A good instinct and a near miss: `daemon-reload` only '
+                      're-reads unit files. Without a matching grant to '
+                      '`start` or `enable`, nothing you wrote ever runs.'),
             Grant('(root) NOPASSWD: /usr/sbin/logrotate -f /etc/logrotate.conf'),
             Grant('(root) NOPASSWD: /usr/bin/id'),
         ),
@@ -75,9 +82,17 @@ _GTFO = MarkBody(
         user='puma', host='trailsrv',
         grants=(
             Grant('(ALL : ALL) NOPASSWD: /usr/bin/systemctl status '
-                  'trail.service', kind='lead'),
+                  'trail.service', kind='lead',
+                  why='A fixed command with no wildcard, which is why it looks '
+                      'safe. The way out is not in the arguments: '
+                      '`systemctl status` pipes through a pager, and a pager '
+                      'takes `!sh`.'),
             Grant('(ALL : ALL) NOPASSWD: /usr/bin/journalctl --no-pager -u '
-                  'trail.service', kind='decoy'),
+                  'trail.service', kind='decoy',
+                  why='The same class of trick, closed. Read the grant: '
+                      '`--no-pager` is already on the command line and it is '
+                      'fixed. The author shut this one and left the other '
+                      'open.'),
             Grant('(ALL : ALL) NOPASSWD: /usr/bin/uptime'),
         ),
     ),
@@ -129,11 +144,20 @@ _WALL = MarkBody(
             Grant('(ALL) NOPASSWD: /usr/bin/systemctl restart nagios.service'),
             Grant('(ALL) NOPASSWD: /usr/bin/systemctl reload nagios.service'),
             Grant('(ALL) NOPASSWD: /usr/bin/systemctl status nagios.service',
-                  kind='decoy'),
+                  kind='decoy',
+                  why='The right trick spotted on the wrong screen, which '
+                      'makes it the most instructive wrong answer here. Worth '
+                      'trying, but a wildcard on a readable script is shorter '
+                      'and more reliable than a pager escape a `--no-pager` '
+                      'default may have closed.'),
             Grant('(ALL) NOPASSWD: /usr/local/nagios/bin/nagios -v '
                   '/usr/local/nagios/etc/nagios.cfg'),
             Grant('(ALL) NOPASSWD: /usr/local/nagiosxi/scripts/'
-                  'manage_services.sh *', kind='lead'),
+                  'manage_services.sh *', kind='lead',
+                  why='Fourteen of these are fixed command lines against a '
+                      'named service. This one takes arbitrary arguments and '
+                      'is a shell script you can read first. That asymmetry is '
+                      'the whole screen.'),
             Grant('(ALL) NOPASSWD: /usr/local/nagiosxi/scripts/'
                   'reset_config_perms.sh'),
             Grant('(ALL) NOPASSWD: /usr/local/nagiosxi/scripts/'

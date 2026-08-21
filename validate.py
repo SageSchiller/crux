@@ -459,6 +459,13 @@ def check_mark_body(s: Scenario) -> None:
             if ln.kind not in LINE_KINDS:
                 err(f'{s.id}: line {ln.id!r} has bad kind {ln.kind!r}')
 
+        for ln in lines:
+            if ln.kind in ('lead', 'decoy') and not ln.why.strip():
+                warn(f'{s.id}: {ln.kind} {ln.id!r} explains nothing. The score '
+                     'tells a student they missed or chased it; only `why` '
+                     'tells them what it meant')
+                break
+
         leads, decoys = roles(lines)
         if first_leads is None:
             first_leads = leads

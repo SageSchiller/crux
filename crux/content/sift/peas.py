@@ -29,7 +29,10 @@ _STOCK_SUID = (
     Note('-rwsr-xr-x 1 root root   52K Nov 24  2024 /usr/bin/chsh'),
     Note('-rwsr-xr-x 1 root root   88K Nov 24  2024 /usr/bin/gpasswd'),
     Note('-rwsr-xr-x 1 root root   68K Nov 24  2024 /usr/bin/passwd',
-         'decoy'),
+         'decoy',
+         why='SUID root on every Linux system in the world, because it has to '
+             'be. So are su, mount, umount, chfn, chsh and newgrp: learn the '
+             'list by sight and the screen empties out.'),
     Note('-rwsr-xr-x 1 root root   44K Nov 24  2024 /usr/bin/newgrp'),
     Note('-rwsr-xr-- 1 root messagebus 51K Oct  1  2024 '
          '/usr/lib/dbus-1.0/dbus-daemon-launch-helper'),
@@ -60,10 +63,18 @@ _SUID = MarkBody(
         Section('SUID - Check easy privesc, exploits and write perms',
                 _STOCK_SUID[:6] + (
                     Note('-rwsr-xr-x 1 root root   17K Mar  3  2026 '
-                         '/usr/local/bin/sysinfo', 'lead'),
+                         '/usr/local/bin/sysinfo', 'lead',
+                         why='Not part of any distribution, SUID root, and '
+                             'dated this year while everything around it is '
+                             'the install date. A locally written SUID helper '
+                             'is the most productive thing on a Linux box.'),
                 ) + _STOCK_SUID[6:9]),
         Section('Capabilities', (
-            Note('/usr/bin/ping = cap_net_raw+ep', 'decoy'),
+            Note('/usr/bin/ping = cap_net_raw+ep', 'decoy',
+                 why='Stock, and `cap_net_raw` grants raw sockets, not file '
+                     'reads or code as root. A capability matters only when it '
+                     'is on something unusual and is one of the dangerous '
+                     'ones.'),
             Note('/usr/bin/mtr-packet = cap_net_raw+ep'),
         )),
         Section('Active Ports', _NET_ROWS),
@@ -113,7 +124,10 @@ _CRON = MarkBody(
             Note('/etc/crontab: 17 *  * * *  root  cd / && run-parts --report '
                  '/etc/cron.hourly'),
             Note('/etc/crontab: */5 * * * * root /opt/scripts/backup.sh',
-                 'lead'),
+                 'lead',
+                 why='Root runs this every five minutes. On its own that is '
+                     'not a finding; paired with the writable path further '
+                     'down the screen it is the whole box.'),
             Note('/etc/cron.daily/apt-compat: root'),
             Note('/etc/cron.daily/dpkg: root'),
             Note('/etc/cron.weekly/man-db: root'),
@@ -123,8 +137,14 @@ _CRON = MarkBody(
                     Note('/tmp'),
                     Note('/var/tmp'),
                     Note('/dev/shm'),
-                    Note('/opt/scripts/backup.sh', 'lead'),
-                    Note('/var/www/html/uploads', 'decoy'),
+                    Note('/opt/scripts/backup.sh', 'lead',
+                         why='You can write it, and the cron section says root '
+                             'runs it. Neither line is interesting alone, '
+                             'which is exactly why this is worth practising.'),
+                    Note('/var/www/html/uploads', 'decoy',
+                         why='World-writable, and you are already on the box. '
+                             'A web shell there runs as the same account you '
+                             'already have.'),
                 )),
         Section('SUID - Check easy privesc, exploits and write perms',
                 _STOCK_SUID[:5]),
@@ -172,8 +192,15 @@ _CREDS = MarkBody(
                  '/var/www/html'),
             Note('/var/www/html/config.php: define("DB_USER", "webapp");'),
             Note('/var/www/html/config.php: define("DB_PASS", '
-                 '"Summer2025!Rotate");', 'lead'),
-            Note('/etc/php/8.2/apache2/php.ini: expose_php = On', 'decoy'),
+                 '"Summer2025!Rotate");', 'lead',
+                 why='A password a person chose. It is not a password for the '
+                     'database so much as a password for this person: spray it '
+                     'at every local account with a shell before spending it '
+                     'where it was found.'),
+            Note('/etc/php/8.2/apache2/php.ini: expose_php = On', 'decoy',
+                 why='A real misconfiguration and a useless one: it discloses '
+                     'a version number to somebody already inside the '
+                     'machine.'),
         )),
         Section('Users with console', (
             Note('root:x:0:0:root:/root:/bin/bash'),
@@ -181,7 +208,10 @@ _CREDS = MarkBody(
             Note('backupsvc:x:1001:1001::/home/backupsvc:/bin/bash'),
         )),
         Section('Active Ports', _NET_ROWS + (
-            Note('tcp   LISTEN 0  70    127.0.0.1:3306  0.0.0.0:*', 'decoy'),
+            Note('tcp   LISTEN 0  70    127.0.0.1:3306  0.0.0.0:*', 'decoy',
+                 why='What the credential is actually for, which is why it is '
+                     'tempting. Reading application data is a lateral step; '
+                     'the local accounts with shells are the vertical one.'),
         )),
     )),
     actions=(
@@ -239,7 +269,9 @@ _CLEAN = MarkBody(
                     Note('/dev/shm'),
                 )),
         Section('Capabilities', (
-            Note('/usr/bin/ping = cap_net_raw+ep', 'decoy'),
+            Note('/usr/bin/ping = cap_net_raw+ep', 'decoy',
+                 why='Stock, and it grants raw sockets. There is no path from '
+                     'crafting packets to reading root-owned files.'),
         )),
     )),
     actions=(

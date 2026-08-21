@@ -29,9 +29,19 @@ _SIZE = MarkBody(
         host='10.10.10.55',
         noise=(16, 24),
         hits=(
-            Hit('/index.php.bak', 200, 14877, kind='lead', exact=True),
-            Hit('/uploads', 301, kind='decoy'),
-            Hit('/admin', 403, kind='decoy'),
+            Hit('/index.php.bak', 200, 14877, kind='lead', exact=True,
+                why='A `.bak` beside a `.php` is source the server hands you '
+                    'as plaintext, because it no longer ends in `.php`. Its '
+                    'size is the tell: three times the rendered pages around '
+                    'it, which is what source looks like next to output.'),
+            Hit('/uploads', 301, kind='decoy',
+                why='A redirect to a directory that will serve a listing or an '
+                    'index. "Uploads exist" is not a finding until you have '
+                    'somewhere to upload from.'),
+            Hit('/admin', 403, kind='decoy',
+                why='The 403 proves it exists, which is worth knowing, but a '
+                    'forbidden admin panel with no credential and no bypass is '
+                    'a wall while something readable is on the same screen.'),
         ),
     ),
     actions=(
@@ -76,9 +86,19 @@ _FORBIDDEN = MarkBody(
         host='10.10.11.108',
         noise=(18, 26),
         hits=(
-            Hit('/dev', 403, kind='lead'),
-            Hit('/phpmyadmin', 403, kind='decoy'),
-            Hit('/backup', 301, kind='decoy'),
+            Hit('/dev', 403, kind='lead',
+                why='403 is not a dead end, it is an existence proof. The '
+                    'server refuses to list the directory, which says nothing '
+                    'about whether files inside it can be fetched by name: '
+                    '`/dev/.git/HEAD` is the next request.'),
+            Hit('/phpmyadmin', 403, kind='decoy',
+                why='Also a real install behind a real wall. Guessing database '
+                    'credentials against a login page is the slowest path on '
+                    'the screen.'),
+            Hit('/backup', 301, kind='decoy',
+                why='Often productive and it is a guessing game about archive '
+                    'names. A `.git` directory has a known internal layout you '
+                    'do not have to guess at.'),
         ),
     ),
     actions=(
@@ -123,9 +143,16 @@ _WILDCARD = MarkBody(
         noise=(20, 28),
         wildcard_size=4242,
         hits=(
-            Hit('/api', 200, kind='decoy'),
-            Hit('/dashboard', 200, kind='decoy'),
-            Hit('/settings', 200, kind='decoy'),
+            Hit('/api', 200, kind='decoy',
+                why='Answers at exactly the same length as every other 200 '
+                    'here. That is one page replying to every name, not an '
+                    'API surface.'),
+            Hit('/dashboard', 200, kind='decoy',
+                why='Same length as the rest. A catch-all route answers to '
+                    'anything you ask it for.'),
+            Hit('/settings', 200, kind='decoy',
+                why='Same length again. Until the repeated size is filtered '
+                    'out, none of these rows is a finding.'),
         ),
     ),
     actions=(

@@ -279,9 +279,12 @@ def main() -> int:
         ok('You marked 1 line' in act, 'the act beat counts the marks')
 
         result = d.send(b'\r')
-        ok('found 1 of 1' in result, 'the correct mark is scored as found')
-        ok('chased nothing' in result, 'nothing was chased')
-        ok('clean pass' in result, 'a perfect run reports a clean pass')
+        ok('What mattered' in result,
+           'the result groups the key under a heading')
+        ok('You marked this' in result,
+           'and says plainly that the correct line was marked')
+        ok('found everything that mattered' in result,
+           'a perfect run says so in words')
         ok('Waypoint node' in result, 'the result links back to Waypoint')
 
         back = d.send(b'H')

@@ -42,6 +42,7 @@ class Note:
 
     text: str
     kind: str = 'noise'
+    why: str = ''
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +51,7 @@ class Port:
     service: str
     version: str = ''
     kind: str = 'noise'
+    why: str = ''
     state: str = 'open'
     scripts: tuple[Note, ...] = ()
 
@@ -62,6 +64,7 @@ class Hit:
     status: int
     size: int = 0
     kind: str = 'noise'
+    why: str = ''
     #: Set to hold the size steady when the size itself is the tell.
     exact: bool = False
 
@@ -72,6 +75,7 @@ class Grant:
 
     text: str
     kind: str = 'noise'
+    why: str = ''
 
 
 class Fixture:
@@ -179,7 +183,7 @@ class NmapScan(Fixture):
         ports = sorted(list(self.ports) + pool[:n_noise], key=lambda p: p.num)
 
         out: list[Line] = []
-        add = lambda i, t, k='noise': out.append(Line(i, t, k))
+        add = lambda i, t, k='noise', w='': out.append(Line(i, t, k, w))
 
         ver = r.choice(_NMAP_VERSIONS)
         date = f'2026-{r.choice(_MONTHS)}-{r.randint(10, 28)} {r.randint(9, 22):02d}:{r.randint(0, 59):02d}'
@@ -198,11 +202,11 @@ class NmapScan(Fixture):
             head = f'{p.num}/tcp'.ljust(10) + p.state.ljust(9) + p.service.ljust(14)
             if self.version_scan and p.version:
                 head += p.version
-            add(f'p{p.num}', head.rstrip(), p.kind)
+            add(f'p{p.num}', head.rstrip(), p.kind, p.why)
             if not self.version_scan:
                 continue
             for j, note in enumerate(self._scripts_for(p, r)):
-                add(f'p{p.num}s{j}', note.text, note.kind)
+                add(f'p{p.num}s{j}', note.text, note.kind, note.why)
 
         if self.os_line:
             add('t0', self.os_line)
@@ -308,7 +312,7 @@ class FeroxRun(Fixture):
             arrow = f' => {base}{path}/' if h.status in (301, 302) else ''
             text = (f'{h.status:<8} GET {lines_n:>8}l {words:>8}w {size:>8}c '
                     f'{base}{path}{arrow}')
-            out.append(Line(_slug('f', path), text, h.kind))
+            out.append(Line(_slug('f', path), text, h.kind, h.why))
 
         out.append(Line('t1', ''))
         out.append(Line('t2', f'[####################] - {r.randint(20, 90)}s '
@@ -371,7 +375,7 @@ class SudoL(Fixture):
         grants = list(self.grants)
         r.shuffle(grants)
         for g in grants:
-            out.append(Line(_slug('g', g.text), '    ' + g.text, g.kind))
+            out.append(Line(_slug('g', g.text), '    ' + g.text, g.kind, g.why))
         return tuple(out)
 
 
@@ -386,6 +390,7 @@ class Share:
     comment: str = ''
     perms: str = ''
     kind: str = 'noise'
+    why: str = ''
 
 
 #: Present on essentially every Windows host. A scenario that did not include
@@ -417,8 +422,10 @@ class SmbShares(Fixture):
                  signing: bool = True, os_name: str = 'Windows Server 2022 '
                                                       'Build 20348 x64',
                  include_defaults: bool = True,
-                 style: str = 'smbclient') -> None:
+                 style: str = 'smbclient', banner_why: str = '') -> None:
         self.style = style
+        #: Why the banner is the finding, when `signing=False` makes it one.
+        self.banner_why = banner_why
         self.host = host
         self.netbios = netbios
         self.domain = domain
@@ -452,7 +459,8 @@ class SmbShares(Fixture):
                                         f'(domain:{self.domain}) '
                                         f'(signing:{self.signing}) '
                                         f'(SMBv1:False)',
-                            'lead' if not self.signing else 'noise'))
+                            'lead' if not self.signing else 'noise',
+                            self.banner_why if not self.signing else ''))
             out.append(Line('h2', pre + f'[+] {self.domain}\\{self.user}: '))
             out.append(Line('h3', pre + '[*] Enumerated shares'))
             out.append(Line('h4', pre + 'Share        Permissions  Remark'))
@@ -461,7 +469,7 @@ class SmbShares(Fixture):
                 out.append(Line(_slug('s', sh.name),
                                 pre + f'{sh.name:<12} {sh.perms:<12} '
                                       f'{sh.comment}',
-                                sh.kind))
+                                sh.kind, sh.why))
             return tuple(out)
 
         out.append(Line('h1', f'Anonymous login successful'))
@@ -472,7 +480,7 @@ class SmbShares(Fixture):
             row = f'        {sh.name:<15} {sh.type:<9} {sh.comment}'
             if sh.perms:
                 row += f'  [{sh.perms}]'
-            out.append(Line(_slug('s', sh.name), row.rstrip(), sh.kind))
+            out.append(Line(_slug('s', sh.name), row.rstrip(), sh.kind, sh.why))
         out.append(Line('t1', ''))
         out.append(Line('t2', 'Reconnecting with SMB1 for workgroup listing.'))
         out.append(Line('t3', 'do_connect: Connection to '
@@ -528,7 +536,7 @@ class PeasChunk(Fixture):
                             f'====( {sec.title} )' + '=' * max(
                                 0, 56 - len(sec.title))))
             for row in sec.rows:
-                out.append(Line(_slug('r', row.text), row.text, row.kind))
+                out.append(Line(_slug('r', row.text), row.text, row.kind, row.why))
         return tuple(out)
 
 
@@ -543,6 +551,7 @@ class Socket:
     state: str = 'LISTEN'
     program: str = '-'
     kind: str = 'noise'
+    why: str = ''
     foreign: str = '0.0.0.0:*'
 
 
@@ -593,7 +602,7 @@ class NetstatDump(Fixture):
                 _slug('n', f'{s.proto}{s.local}'),
                 f'{s.proto:<5} {0:>6} {0:>6} {s.local:<23} {s.foreign:<23} '
                 f'{s.state:<11} {s.program}',
-                s.kind))
+                s.kind, s.why))
         return tuple(out)
 
 
@@ -606,6 +615,7 @@ class DirUser:
     name: str
     description: str = ''
     kind: str = 'noise'
+    why: str = ''
     flags: str = ''
 
 
@@ -646,10 +656,11 @@ class LdapUsers(Fixture):
         for u in users:
             out.append(Line(_slug('u', u.name), f'sAMAccountName: {u.name}'))
             out.append(Line(_slug('d', u.name + u.description),
-                            f'description: {u.description}', u.kind))
+                            f'description: {u.description}', u.kind, u.why))
             if u.flags:
                 out.append(Line(_slug('f', u.name), f'userAccountControl: {u.flags}',
-                                u.kind if not u.description else 'noise'))
+                                u.kind if not u.description else 'noise',
+                                u.why if not u.description else ''))
             out.append(Line(_slug('b', u.name), ''))
         return tuple(out)
 
@@ -695,11 +706,11 @@ class HttpResponse(Fixture):
                          f'{r.randint(0, 23):02d}:{r.randint(0, 59):02d}:00 GMT'))
         r.shuffle(rows)
         for h in rows:
-            out.append(Line(_slug('h', h.text), h.text, h.kind))
+            out.append(Line(_slug('h', h.text), h.text, h.kind, h.why))
         if self.source:
             out.append(Line('sep', ''))
             for src in self.source:
-                out.append(Line(_slug('s', src.text), src.text, src.kind))
+                out.append(Line(_slug('s', src.text), src.text, src.kind, src.why))
         return tuple(out)
 
 
@@ -713,6 +724,7 @@ class Priv:
     desc: str
     state: str = 'Enabled'
     kind: str = 'noise'
+    why: str = ''
 
 
 #: Privileges that grant nothing on their own and turn up on ordinary and
@@ -789,7 +801,7 @@ class WhoamiPriv(Fixture):
         ]
         for p in rows:
             out.append(Line(_slug('p', p.name),
-                            f'{p.name:<29} {p.desc:<42} {p.state}', p.kind))
+                            f'{p.name:<29} {p.desc:<42} {p.state}', p.kind, p.why))
         return tuple(out)
 
 
@@ -839,6 +851,6 @@ class TextBlock(Fixture):
         if self.shuffle:
             r.shuffle(rows)
         for row in rows:
-            out.append(Line(_slug('r', row.text), row.text, row.kind))
+            out.append(Line(_slug('r', row.text), row.text, row.kind, row.why))
         out += [Line(f't{i}', t) for i, t in enumerate(self.footer)]
         return tuple(out)

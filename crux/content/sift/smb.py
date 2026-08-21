@@ -22,9 +22,18 @@ _ODD_SHARE = MarkBody(
     fixture=SmbShares(
         host='', netbios='FS01', domain='harbord.local',
         shares=(
-            Share('HR', 'Disk', '', kind='lead'),
-            Share('DEV', 'Disk', 'Development', kind='decoy'),
-            Share('NETLOGON', 'Disk', 'Logon server share', kind='decoy'),
+            Share('HR', 'Disk', '', kind='lead',
+                  why='A share named after a department that anonymous access '
+                      'reached. Departmental shares hold onboarding documents, '
+                      'and onboarding documents hold starting passwords.'),
+            Share('DEV', 'Disk', 'Development', kind='decoy',
+                  why='A good instinct, since developers do leave credentials. '
+                      'But it is only listed, not readable: chase what you can '
+                      'already reach.'),
+            Share('NETLOGON', 'Disk', 'Logon server share', kind='decoy',
+                  why='Standard on a domain controller and normally needs an '
+                      'authenticated session. Its presence is the directory '
+                      'working, not a finding.'),
             Share('SYSVOL', 'Disk', 'Logon server share'),
         ),
     ),
@@ -61,8 +70,16 @@ _SIGNING = MarkBody(
         host='', netbios='WEB01', domain='corp.local', style='nxc',
         signing=False,
         os_name='Windows Server 2019 Build 17763 x64',
+        banner_why='`signing:False` is the precondition for NTLM relay. It '
+                   'turns any authentication you can coerce out of another '
+                   'account into a session on this host, and it is a property '
+                   'of the host rather than of anything you found on it.',
         shares=(
-            Share('wwwroot', 'Disk', '', 'READ', kind='decoy'),
+            Share('wwwroot', 'Disk', '', 'READ', kind='decoy',
+                  why='Readable and genuinely worth a look for source and '
+                      'connection strings, but it is a file hunt. The banner '
+                      'above it named a structural weakness in how the host '
+                      'authenticates.'),
         ),
     ),
     actions=(
@@ -98,7 +115,10 @@ _DEFAULTS_ONLY = MarkBody(
     fixture=SmbShares(
         host='', netbios='SRV02', domain='corp.local',
         shares=(
-            Share('IPC$', 'IPC', 'Remote IPC', kind='decoy'),
+            Share('IPC$', 'IPC', 'Remote IPC', kind='decoy',
+                  why='On every Windows host ever built. RID cycling through '
+                      'it is worth trying, but its appearance in a listing is '
+                      'not the reason to, or you will "find" it every time.'),
         ),
     ),
     actions=(

@@ -662,6 +662,58 @@ def test_hostile_capstone() -> None:
         scr2.close()
 
 
+def test_result_explains_every_key_line() -> None:
+    """Every lead and every decoy must say what it meant.
+
+    The score tells a student *that* they missed something or chased
+    something; only `Line.why` tells them **why that line was the lead** or
+    **why that one was a trap**, which is the entire thing the track teaches.
+    A key line with no explanation is a teaching hole, so it is a failure
+    rather than a style note.
+    """
+    from crux.screens.mark import MarkScreen
+    from crux.screens.result import ResultScreen
+
+    session = Session.open(clock=FakeClock(), read_only=True, seed_override=0)
+    caps = R.Caps(R.ColorLevel.NONE, R.GlyphLevel.UNICODE,
+                  next(iter(PALETTES.values())), 88, 60)
+
+    for sc in load().track('sift').scenarios:
+        if not isinstance(sc.body, MarkBody):
+            continue
+        for ln in sc.body.build(0):
+            if ln.kind in ('lead', 'decoy'):
+                ok(bool(ln.why.strip()),
+                   f'{sc.id}: {ln.kind} {ln.id!r} explains nothing')
+
+        # And the explanation has to actually reach the result screen. Play it
+        # badly on purpose: miss every lead and chase every decoy, which is
+        # the attempt that most needs explaining.
+        mark = MarkScreen(session, sc, seed=0)
+        score = score_marks(mark.leads, mark.decoys, mark.decoys, elapsed=10.0)
+        res = ResultScreen(session, sc, score, mark.lines)
+        # content(), not render(): the result scrolls, so render() returns only
+        # the visible window. What matters here is that the explanation is on
+        # the screen at all; that it can be scrolled to is tested separately.
+        # Whitespace-free, because wrapping legitimately breaks a line at a
+        # real hyphen ("catch-all" -> "catch-" / "all") and a fragment compared
+        # with spaces in it would fail on correct output.
+        shown = ''.join(''.join(r.plain().split()) for r in res.content(caps))
+        for ln in mark.lines:
+            if ln.kind in ('lead', 'decoy') and ln.why:
+                fragment = ''.join(ln.why.split())[:34]
+                ok(fragment in shown,
+                   f'{sc.id}: the explanation for {ln.id!r} never reaches the '
+                   'result screen')
+        # The verdict has to be a sentence, not just a band name.
+        ok('Youmissed' in shown or 'nothinghere' in shown.lower(),
+           f'{sc.id}: the result states the outcome in words')
+        ok('Whatyouchased' in shown or not score.chased,
+           f'{sc.id}: result groups what was chased under a heading')
+        ok('Whatmattered' in shown or not (score.found or score.missed),
+           f'{sc.id}: result groups what mattered under a heading')
+
+
 def test_result_screens_scroll() -> None:
     """The debrief must be reachable on a minimum-size terminal.
 
@@ -1358,7 +1410,8 @@ def main() -> int:
                test_result_screens_scroll, test_conduit_engine,
                test_conduit_end_to_end, test_all_conduit_solutions,
                test_chain_flow, test_chain_partial, test_home_shows_chain,
-               test_list_windowing, test_no_third_party_attribution,
+               test_list_windowing, test_result_explains_every_key_line,
+               test_no_third_party_attribution,
                test_splash,
                test_screens_render, test_screen_contract, test_walkthrough,
                test_stub_records_nothing, test_session_persists, test_panning):
