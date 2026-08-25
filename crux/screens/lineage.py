@@ -63,6 +63,12 @@ class WalkScreen(ListScreen):
         self.budget = LN.budget_for(self.best.cost)
         self.taken: list = []
         self.gave_up = False
+        #: The last right taken, shown as feedback until the next move. A
+        #: priced graph updates in place when you press enter, and without a
+        #: line saying "you just took this" a first-timer cannot tell whether
+        #: anything happened. Making the consequence of a move visible is what
+        #: teaches the interaction that no amount of up-front text does.
+        self.just_took = None
         self.watch = Stopwatch(session.clock)
         self.watch.start()
         self._done = False
@@ -128,6 +134,18 @@ class WalkScreen(ListScreen):
             hold.add(piece, p.ok)
             shown += 1
         rows.append(hold)
+
+        # Feedback for the move just made. A priced graph redraws in place, so
+        # this is what tells a first-timer that enter did something: what they
+        # took, what it cost, and that a new move may now be open below.
+        if self.just_took is not None:
+            e = self.just_took
+            rows.extend(wrap_rich(
+                caps,
+                f'**Took {self.built.label(e.dst)}** for '
+                f'{LN.cost_of(e.kind)}. It is yours now, and any new rights it '
+                f'opens are in the list below.',
+                caps.cols - 6, '  ', p.ok, p.accent))
         rows.append(Text())
 
         # Hand-holding on first contact, and out of the way after. A priced
@@ -139,6 +157,10 @@ class WalkScreen(ListScreen):
         # uses. Gated on standalone lineage history, so a chain's lineage
         # stage still explains itself to someone who has never played the
         # track.
+        if getattr(self.body_data, 'tutorial', False):
+            # The tutorial's own brief is the explainer; a second generic block
+            # would just be reading the same thing twice.
+            return rows
         first_time = self.session.state.track_summary('lineage')[0] == 0
         if first_time:
             rows.append(line('  New here?', p.accent2, bold=True))
@@ -207,6 +229,7 @@ class WalkScreen(ListScreen):
         if LN.cost_of(edge.kind) > self.left:
             return STAY
         self.taken.append(edge)
+        self.just_took = edge
         self.cursor = 0
         if self.arrived or not self.left or not self.moves():
             return self._finish()

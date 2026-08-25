@@ -608,6 +608,9 @@ def check_lineage_body(s: Scenario) -> None:
         err(f'{s.id}: no brief')
     if b.teaches not in TEACHES:
         err(f'{s.id}: teaches={b.teaches!r} is not one of {TEACHES}')
+    if b.tutorial and b.teaches:
+        err(f'{s.id}: a tutorial makes no teaches claim; it demonstrates the '
+            f'mechanic rather than a graph property')
     if not b.debrief.strip():
         warn(f'{s.id}: no debrief; the route is only half the lesson')
 
@@ -674,7 +677,7 @@ def check_lineage_body(s: Scenario) -> None:
             round(min(100.0, 100.0 * best.cost / spent), 1) if (arrived and spent)
             else 0.0)
 
-        if seed == PROBE_SEEDS[0]:
+        if seed == PROBE_SEEDS[0] and not b.tutorial:
             _check_teaches(s, built, best)
 
         for e in best.edges:
@@ -691,7 +694,14 @@ def check_lineage_body(s: Scenario) -> None:
     # noise, which the cost-greedy simulator cannot see, and the real check
     # for it is `_noisy_alternative` above. Applying the cost ceiling here
     # would demand a graph the scenario is specifically built not to be.
-    if greedy_scores and b.teaches != 'quiet':
+    # The tutorial is exempt from the drill-quality warnings on purpose (see
+    # LineageBody): it teaches the mechanic by being trivial, so a greedy
+    # player winning it and its having no dead end are the point, not defects.
+    # A `quiet` scenario is also exempt from the greedy-cost ceiling: its two
+    # routes cost the same by design, so a cost-only strategy is meant to score
+    # full marks and the reading it trains is noise, which the cost simulator
+    # cannot see.
+    if greedy_scores and not b.tutorial and b.teaches != 'quiet':
         mean = sum(greedy_scores) / len(greedy_scores)
         if mean >= GREEDY_WALK_CEILING:
             warn(f'{s.id}: always taking the cheapest visible move averages '
@@ -700,9 +710,24 @@ def check_lineage_body(s: Scenario) -> None:
                  f'do in this graph; add a branch worth getting wrong rather '
                  f'than harshening the scorer')
 
-    if not _culdesacs(b.canonical()):
+    if not b.tutorial and not _culdesacs(b.canonical()):
         warn(f'{s.id}: no branch out of what you hold fails to reach the '
              'objective, so nothing here is worth getting wrong')
+
+    # At most one tutorial in the track: two would mean the mechanic is being
+    # taught twice and drilled once less.
+    if b.tutorial:
+        others = [x for x in _reg_lineage_tutorials() if x != s.id]
+        if others:
+            err(f'{s.id}: more than one lineage tutorial ({[s.id] + others}); '
+                f'the track teaches the mechanic once')
+
+
+def _reg_lineage_tutorials() -> list:
+    from crux.loader import load
+    from crux.model import LineageBody as _LB
+    return [x.id for x in load().scenarios
+            if isinstance(x.body, _LB) and x.body.tutorial]
 
 
 def _check_teaches(s: Scenario, built, best) -> None:

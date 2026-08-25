@@ -325,6 +325,13 @@ class LineageBody:
 
     A claim in a docstring is a claim nobody rechecks. A claim in a field that
     `validate.py` proves against the graph cannot rot.
+
+    `tutorial` marks the one scenario that teaches the mechanic by being played
+    rather than by being read. It is held to the checks that keep it *usable*,
+    solvable and stable across seeds, but excused the ones that make a scenario
+    a good *drill*: it needs no cul-de-sac, no cost gap and no resistance to a
+    greedy player, because its whole job is to let a first-timer make a couple
+    of unmissable moves and watch what happens. A track has at most one.
     """
 
     brief: str
@@ -332,6 +339,7 @@ class LineageBody:
     objective_note: str = ''
     teaches: str = ''
     debrief: str = ''
+    tutorial: bool = False
 
     def build(self, seed: int):
         return self.graph.build(seed)

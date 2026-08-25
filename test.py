@@ -2486,6 +2486,64 @@ def test_chain_four_stage_engagement() -> None:
            'skipped for want of namespaces')
 
 
+def test_lineage_tutorial() -> None:
+    """The tutorial teaches the mechanic by being played, and orients a
+    first-timer that reading did not.
+
+    Guards the three things that make it a tutorial rather than a drill: it is
+    first in the track, it explains itself in place of the generic block, and
+    a move produces visible feedback so pressing enter is legibly doing
+    something.
+    """
+    from crux.model import LineageBody
+    from crux.screens.lineage import WalkScreen
+
+    session = Session.open(clock=FakeClock(), read_only=True)
+    session.state = State()
+    lineage = session.registry.track('lineage').scenarios
+    first = lineage[0]
+    ok(getattr(first.body, 'tutorial', False),
+       'the first lineage scenario is the tutorial, so it is what a newcomer '
+       'meets first')
+    ok(sum(1 for sc in lineage
+           if isinstance(sc.body, LineageBody) and sc.body.tutorial) == 1,
+       'and there is exactly one')
+
+    caps = all_caps()[0]
+    w = WalkScreen(session, first, seed=0)
+    shown = ''.join(r.plain() for r in w.render(caps))
+    ok('New here?' not in shown,
+       'the tutorial does not also show the generic explainer; its brief is '
+       'the explainer')
+    ok('practice run' in shown, 'and its brief frames it as a safe practice')
+
+    # A move gives feedback and grows what you hold.
+    before_hold = len(w.owned)
+    moves = w.moves()
+    ok(len(moves) >= 1, 'the tutorial offers a move to make')
+    w.activate(0)
+    ok(w.just_took is not None, 'taking a move records what was taken')
+    after = ''.join(r.plain() for r in w.render(caps))
+    ok('Took' in after,
+       'and the screen says so, which is how a first-timer sees enter did '
+       'something')
+    ok(len(w.owned) > before_hold, 'the move grew what you hold')
+
+    # It is winnable by taking the only route, and records like any walk.
+    guard = 0
+    result = None
+    while result is None and guard < 8:
+        guard += 1
+        mv = w.moves()
+        if not mv:
+            break
+        a = w.activate(0)
+        if a.kind == 'replace':
+            result = a.screen
+    ok(result is not None, 'the tutorial completes')
+    ok(result.score.reached, 'and it is winnable by taking the obvious moves')
+
+
 def main() -> int:
     for fn in (test_keys, test_render_primitives, test_scoring, test_clock,
                test_state, test_model_guards, test_loader, test_fixtures,
@@ -2502,6 +2560,7 @@ def main() -> int:
                test_lineage_arithmetic, test_lineage_scoring,
                test_lineage_content, test_lineage_walk,
                test_lineage_writes_and_waypoints,
+               test_lineage_tutorial,
                test_sitting_runs_a_lineage_leg,
                test_list_windowing, test_progress_reset_and_work_files,
                test_result_explains_every_key_line,

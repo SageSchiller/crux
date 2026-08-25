@@ -34,10 +34,15 @@ Python 3, standard library only. No pip, no network, ever.
 **v1.7.0. All four skill tracks are built, chain mode threads them
 into three engagements, and `proctor` runs them against a clock.** Thirty-three
 `sift` scenarios across ten families, ten `salvage` defect classes each
-grounded in a real CVE, seven `conduit` topologies, six `lineage`
-collections, three full engagements (one single Linux host, one Active Directory
+grounded in a real CVE, seven `conduit` topologies, seven `lineage`
+collections (one a tutorial), three full engagements (one single Linux host, one Active Directory
 shape, and one four-stage AD engagement that ends on a graph walk to Domain
 Admin), and three timed sittings.
+
+`lineage` opens on a two-move tutorial ("Start here"), because a priced
+graph is a game and games are learned by playing one trivial round, not by
+reading about them. Every move shows what it took so pressing a key is legibly
+doing something.
 
 `lineage` is the domain-graph track. You hold one account in a synthetic
 collection and have to end up holding another. Every right is **priced** by
