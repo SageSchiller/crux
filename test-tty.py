@@ -245,6 +245,8 @@ def main() -> int:
         ok('sift' in home and 'salvage' in home and 'conduit' in home,
            'all three tracks are listed')
         ok('chain' in home, 'and the chain capstone')
+        ok('lineage' in home, 'and the lineage collections')
+        ok('proctor' in home, 'and the proctor sittings')
         ok('scenario' in home,
            'the picker shows how much content each track has')
         ok('engine not built yet' not in home,
@@ -329,9 +331,27 @@ def main() -> int:
             ok('r build and run' in first, 'and offers to build the network')
             ok('key' in first, 'and tells you where the SSH key is')
 
+        # lineage: the collection and the priced walk. The picker order is
+        # the four skill tracks and then the two composites, so from conduit
+        # (index 2) one Down reaches lineage rather than chain.
+        d.send(b'H')
+        d.send(b'\x1b[B')
+        lin = d.send(b'\r')
+        ok('lineage' in lin, 'the lineage track opens')
+        walk = d.send(b'\r')
+        ok('Objective' in walk, 'the walk names what you have to end up holding')
+        ok('You hold' in walk, 'and what you already hold')
+        ok('m collection' in walk, 'and offers the collection')
+        coll = d.send(b'm')
+        ok('principals' in coll and 'rights between them' in coll,
+           'm opens the whole collection, not only the moves')
+        ok('the objective' in coll, 'and marks the objective in it')
+        back = d.send(b'\x1b')
+        ok('Objective' in back, 'esc comes back to the moves')
+
         # chain: the capstone, driven from the picker into its first stage.
         d.send(b'H')
-        # cursor is on conduit (row 3, index 2); one more Down reaches chain.
+        # cursor is on lineage (index 3); one more Down reaches chain.
         d.send(b'\x1b[B')
         chain = d.send(b'\r')
         ok('chain' in chain or 'engagement' in chain.lower(),
@@ -342,6 +362,58 @@ def main() -> int:
         stage1 = d.send(b'\r')
         ok('Wexler' in stage1 or 'scan' in stage1.lower(),
            'and begin opens the first stage')
+
+        # The four-stage engagement: reach its intro and confirm the lineage
+        # capstone is listed. Driving the whole thing over a pty is test.py's
+        # job; what this proves is that the widened chain reaches a real
+        # terminal with its fourth stage on the brief. The picker cursor is
+        # still on the chain row from the walk just above, so H returns there
+        # without disturbing the position the proctor block below relies on.
+        d.send(b'H')
+        clist = d.send(b'\r')
+        ok('Wexler' in clist or 'Aldwych' in clist or 'Northwind' in clist,
+           'the chain section lists its engagements')
+        # Engagements sort by order: Wexler(10), Northwind(20), Aldwych(30).
+        # Two Downs reach Aldwych; H afterwards leaves the picker cursor back
+        # on the chain row.
+        d.send(b'\x1b[B')
+        d.send(b'\x1b[B')
+        ald = d.send(b'\r')
+        ok('Aldwych' in ald, 'the Aldwych engagement opens')
+        ok('lineage' in ald or 'take the domain' in ald,
+           'and its brief lists the lineage capstone stage')
+
+        # proctor: the clock, and the one verb it adds. What this suite can
+        # see and `test.py` cannot is whether the budget and the abandon key
+        # actually reach a real terminal, which is the same class of thing as
+        # the space bar that did nothing for the whole of Phase 0.
+        d.send(b'H')
+        # cursor is on chain (index 4); one more Down reaches proctor.
+        d.send(b'\x1b[B')
+        proc = d.send(b'\r')
+        ok('proctor' in proc, 'the proctor track opens')
+        ok('p pacing' in proc, 'and offers the pacing review')
+
+        review = d.send(b'p')
+        ok('on task' in review or 'Nothing recorded yet' in review,
+           'the pacing review reads history')
+        d.send(b'\x1b')
+
+        sit = d.send(b'\r')
+        ok('compressed' in sit,
+           'the sitting says on its face that it is not a 24-hour exam')
+        ok('pass on' in sit, 'and names the mark you have to clear')
+
+        leg = d.send(b'\r')
+        ok('left' in leg, 'starting a sitting puts the clock in the header')
+        ok('X abandon' in leg,
+           'and the abandon key reaches the footer of a real terminal '
+           'without being clipped off the edge')
+
+        walked = d.send(b'X')
+        ok('walked away' in walked,
+           'X walks away from the leg and says so')
+        ok('Next:' in walked, 'and the sitting moves on')
     finally:
         code = d.close()
 

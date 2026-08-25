@@ -99,6 +99,71 @@ _TOPICS = {
              'from where it has to succeed.'),
         ],
     ),
+    'lineage': (
+        'lineage: the cheapest way through a domain',
+        [
+            ('What you are doing',
+             'You have a collection of an Active Directory domain and one '
+             'account inside it. Somewhere in the graph is a route to the '
+             'principal you have been told to end up holding. Find the '
+             '**cheapest** one.'),
+            ('How to play',
+             'Press **m** to read the collection: every principal, and every '
+             'right out of it, whether or not you can use it yet. Back on the '
+             'moves, the list is the rights you can use **now**, and the '
+             'number in brackets is what using it costs. Enter buys it. Group '
+             'memberships are free and automatic, so they never appear as '
+             'moves; look at what you hold.'),
+            ('What the cost means',
+             'Not difficulty. Roughly what using the right costs you on an '
+             'engagement: how loud it is, how much of it cannot be undone, '
+             'and who notices. Connecting to a host you administer is one. '
+             'Pulling credentials out of a live host is two. **Resetting a '
+             'real person\'s password is four**, because it is destructive, '
+             'logged, and ends in a phone call.'),
+            ('The catch',
+             'A map that ranks routes by how many edges they have will often '
+             'draw you the expensive one, because an edge is not a unit of '
+             'anything. Fewer hops is not cheaper. It is just fewer hops.'),
+            ('How you are scored',
+             'On what you spent against what the cheapest route cost. '
+             'Arriving by an expensive route still arrives and still scores; '
+             'running out of budget does not. What you paid for that led '
+             'nowhere is named separately, because nobody is ever shown that '
+             'about themselves.'),
+        ],
+    ),
+    'proctor': (
+        'proctor: spend the clock',
+        [
+            ('What you are doing',
+             'A **sitting** is a run of several scenarios against one budget '
+             'that does not stop. Each leg gets a **share** of that budget: '
+             'not how long it takes, but how much of your clock it is '
+             'entitled to. Cross it and you are spending the next leg\'s '
+             'time.'),
+            ('How to play',
+             'Each leg plays exactly like its own track. The header shows '
+             'what is left of the budget, and how far past its share the leg '
+             'you are on has gone. Press **X** to walk away from a leg: you '
+             'take the zero and you keep the clock. When the budget is gone '
+             'the sitting ends where it stands, and legs you never reached '
+             'score nothing.'),
+            ('The catch',
+             'One of the sittings has more work in it than there is clock, on '
+             'purpose. It cannot be finished. It can be **passed**, and '
+             'working out the difference is the whole exercise.'),
+            ('How you are scored',
+             'The mean over every leg, including the ones you never reached, '
+             'against the sitting\'s pass mark. The number that actually '
+             'teaches is underneath: **sunk** time, meaning minutes spent '
+             'past a leg\'s own share on a leg that then scored zero.'),
+            ('What this is not',
+             'It is not a twenty-four hour exam and it does not pretend to '
+             'be. A compressed sitting trains allocation and knowing when to '
+             'walk away. Endurance is not on offer here.'),
+        ],
+    ),
     'chain': (
         'chain: a whole box, end to end',
         [
@@ -161,6 +226,14 @@ class HelpScreen(ScrollScreen):
         elif self.topic in ('salvage', 'conduit'):
             keys += [('e', 'edit the script'), ('r', 'run it'),
                      ('g', 'give up and see the answer')]
+        elif self.topic == 'lineage':
+            keys += [('m', 'read the whole collection'),
+                     ('enter', 'use the selected right'),
+                     ('g', 'give up and see the cheapest route')]
+        elif self.topic == 'proctor':
+            keys += [('enter', 'open, and start the clock'),
+                     ('p', 'your pacing review, from the track list'),
+                     ('X', 'walk away from the leg you are on')]
         else:
             keys += [('enter', 'open')]
         keys += [('esc', 'back'), ('H', 'home'), ('q', 'quit')]

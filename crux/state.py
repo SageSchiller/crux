@@ -58,6 +58,17 @@ class Attempt:
     #: before it was executed. Neither can be backfilled.
     runs: int = 0
     read_first: bool | None = None
+    #: proctor only. `sitting` names the sitting this attempt was played
+    #: inside, empty for ordinary practice, and `abandoned` records that the
+    #: student walked away from it on purpose rather than failing it.
+    #:
+    #: The distinction is the whole point of the track: a zero you chose at
+    #: four minutes and a zero you fought for at twenty are opposite
+    #: outcomes, and a history that stored only the score could never tell
+    #: them apart afterwards. Same argument as crux D12, and the same
+    #: consequence: it cannot be backfilled.
+    sitting: str = ''
+    abandoned: bool = False
 
     @classmethod
     def from_dict(cls, d: dict) -> Attempt:
@@ -76,6 +87,8 @@ class Attempt:
             action_ok=d.get('action_ok'),
             runs=int(d.get('runs', 0)),
             read_first=d.get('read_first'),
+            sitting=str(d.get('sitting', '')),
+            abandoned=bool(d.get('abandoned', False)),
         )
 
 
@@ -99,6 +112,16 @@ class State:
 
     def attempted(self, scenario_id: str) -> bool:
         return any(a.scenario == scenario_id for a in self.attempts)
+
+    def last_when(self, scenario_id: str) -> float | None:
+        """When this scenario was last attempted, or None if never.
+
+        `proctor` fills a slot by preferring what you have never played and
+        then what you played longest ago, so it needs the age of a scenario
+        rather than just whether it exists in history.
+        """
+        rows = self.for_scenario(scenario_id)
+        return max(a.when for a in rows) if rows else None
 
     def track_summary(self, track: str) -> tuple[int, float]:
         """(scenarios attempted, mean best score) for one track."""

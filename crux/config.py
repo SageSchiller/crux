@@ -35,21 +35,28 @@ MIN_ROWS = 24
 #: The three tracks, in engagement order. The program name deliberately does
 #: not enumerate them (crux D5): `proctor` and `lineage` are planned as four
 #: and five, and adding one must cost nothing but a row here.
-TRACKS = ('sift', 'salvage', 'conduit')
+TRACKS = ('sift', 'salvage', 'conduit', 'lineage')
 
-#: Chain mode composes the three tracks into one engagement. It is not a fourth
-#: skill track (that is what `proctor` and `lineage` will be); it is the reason
-#: the three are one program. Kept separate from TRACKS so everything that
-#: means "the three skills" stays meaning exactly that, and SECTIONS is what
-#: means "everything with content".
+#: Chain mode composes the three tracks into one engagement, and `proctor`
+#: composes them into a timed sitting. Neither is a skill track: they own no
+#: engine and no exercises of their own, they schedule other tracks' (crux
+#: D24). Kept out of TRACKS so everything that means "the skills" stays
+#: meaning exactly that, and SECTIONS is what means "everything with content".
+#: `lineage` is a skill and will join TRACKS when it is built.
 CHAIN = 'chain'
-SECTIONS = TRACKS + (CHAIN,)
+PROCTOR = 'proctor'
+SECTIONS = TRACKS + (CHAIN, PROCTOR)
+
+#: The sections that compose other tracks rather than owning content (D24).
+COMPOSITE = (CHAIN, PROCTOR)
 
 TRACK_BLURB = {
     'sift': 'Find the lead in raw tool output.',
     'salvage': 'Repair a broken proof-of-concept until it lands.',
     'conduit': 'Build the tunnel chain that reaches the next subnet.',
+    'lineage': 'Take the cheapest path through a domain, not the shortest.',
     'chain': 'One engagement, all three tracks, end to end.',
+    'proctor': 'Spend the clock. Know when to walk away.',
 }
 
 #: The verification tiers of crux D6. Never blurred, always shown.

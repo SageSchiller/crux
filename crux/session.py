@@ -64,6 +64,28 @@ class Session:
         self._save()
         return attempt
 
+    def record_walk(self, scenario: Scenario, score, route=(),
+                    seed: int = 0) -> Attempt:
+        """Record a lineage attempt.
+
+        `precision` is the share of what you spent that you had to spend, which
+        is the same quantity the word means everywhere else in this app: how
+        much of what you did was necessary. `marked` holds the route, for the
+        reason state.py gives for holding the marks: the score is a number
+        nobody can argue with afterwards and the route is the evidence.
+        """
+        attempt = Attempt(
+            scenario=scenario.id, track=scenario.track,
+            when=self.clock.wall(), elapsed=score.elapsed,
+            total=score.total, marks=score.total,
+            recall=1.0 if score.reached else 0.0,
+            precision=(min(1.0, score.optimal / score.spent)
+                       if score.spent else 0.0),
+            tier=scenario.tier, seed=seed, marked=tuple(route))
+        self.state.record(attempt)
+        self._save()
+        return attempt
+
     def _save(self) -> None:
         if self.read_only:
             return

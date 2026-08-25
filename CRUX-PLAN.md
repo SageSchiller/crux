@@ -12,27 +12,28 @@ updated: 2026-08-20
 > Resumable build plan for **crux**. **Read this file first** when picking the project back up. Every locked decision and every completed step is recorded here so work can pause and resume without re-deriving context.
 
 > [!tip] Picking this back up: START HERE
-> **State as of 2026-08-20: crux is v1.5.0. All seven phases are done, every track is built, chain mode threads them into two engagements, and the launch opens on an animated CRUX scan-lock splash.** It lives at `~/projects/crux`, outside the Obsidian vault, same as `waypoint` and `hone`, and it is its own git repository.
+> **State as of 2026-08-24: crux is v1.7.0. Nine phases are done, all four skill tracks are built, chain mode threads them into three engagements (one four-stage), `proctor` runs them against a clock, and the launch opens on an animated CRUX scan-lock splash.** It lives at `~/projects/crux`, outside the Obsidian vault, same as `waypoint` and `hone`, and it is its own git repository.
 >
-> **The shape.** Three tracks and a capstone, each verifying against something real rather than against a checklist. `sift` grades what you mark against a seeded screen of tool output. `salvage` scores by *being* the loopback service the exploit is aimed at. `conduit` builds a genuine multi-hop network out of unprivileged namespaces, with a real `sshd` on the pivot and no sudo, and where the kernel forbids it the track says so and scores nothing (D14). `chain` threads all three into engagements that end on "rooted": one single-host Linux box, one Active Directory shape. The ten `sift` families, the ten `salvage` defect classes, the seven `conduit` topologies and the two engagements are described in the track sections and the session log below. The live counts are whatever `validate.py` prints; it is authoritative and cannot drift, so no table of them is kept here.
+> **The shape.** Four skills and two ways of composing them (D24), each verifying against something real rather than against a checklist. `sift` grades what you mark against a seeded screen of tool output. `salvage` scores by *being* the loopback service the exploit is aimed at. `conduit` builds a genuine multi-hop network out of unprivileged namespaces, with a real `sshd` on the pivot and no sudo, and where the kernel forbids it the track says so and scores nothing (D14). `chain` threads them into engagements that end on "rooted": one single-host Linux box, one Active Directory shape, and one four-stage AD engagement that finishes on a graph walk to Domain Admin. `lineage` prices every right in a synthetic domain collection and grades the route you take against the cheapest one there was, which is usually not the shortest. `proctor` runs the others against one budget that never stops, adds the abandon key, and ends when the clock does rather than when the work does. The ten `sift` families, the ten `salvage` defect classes, the seven `conduit` topologies, the six `lineage` collections, the three engagements and the three sittings are described in the track sections and the session log below. The live counts are whatever `validate.py` prints; it is authoritative and cannot drift, so no table of them is kept here.
 >
-> **How to run it and check it.** `python3 -m crux` (opens on the animated CRUX scan-lock splash; `--no-splash` skips it). Progress lives in `$XDG_DATA_HOME/crux`: `state.json` is history, `work/` is your edited scripts. Erase it with `--reset [history|work|all]`, with `R` on the home screen, or restore one exercise with `R` twice inside it, or `./build.sh && dist/crux.pyz` for the standalone single file. After any change: `python3 validate.py` (structure, content, and a real run of every salvage/conduit/chain solution; `--fast` skips the runs, `--scores` prints the score profile) and `python3 test.py`. A third suite, `python3 test-tty.py`, drives the real app through a pty and is the only one that can see the boundary between terminal bytes and a keypress; it skips cleanly where it cannot run.
+> **How to run it and check it.** `python3 -m crux` (opens on the animated CRUX scan-lock splash; `--no-splash` skips it). Progress lives in `$XDG_DATA_HOME/crux`: `state.json` is history, `work/` is your edited scripts. Erase it with `--reset [history|work|all]`, with `R` on the home screen, or restore one exercise with `R` twice inside it, or `./build.sh && dist/crux.pyz` for the standalone single file. After any change: `python3 validate.py` (structure, content, and a real run of every salvage/conduit/chain solution; `--fast` skips the runs, `--scores` prints the sift score profile, `--paths` the lineage one, `--pacing` every sitting's shares beside what your own history says) and `python3 test.py`. A third suite, `python3 test-tty.py`, drives the real app through a pty and is the only one that can see the boundary between terminal bytes and a keypress; it skips cleanly where it cannot run.
 >
 > **The one caveat on this plan's own terms: the Phase 1 gate was passed on the author's instruction, not by a played session.** It is the single thing here that was not verified the way the plan said it would be. If the marking mechanic ever wants changing, it now changes against thirty-three scenarios rather than the eleven that were live when the gate was meant to close.
 >
-> **The counts (from `validate.py`, which is authoritative):** 33 sift scenarios across ten families, 10 salvage defect classes, 7 conduit topologies, and 2 chain engagements of 3 stages each. `validate.py` clean with zero warnings; `test.py` green at 32,985 checks including a full engagement driven stage to stage; `test-tty.py` green at 44 against a real pty. `dist/crux.pyz` builds and runs standalone.
+> **The counts (from `validate.py`, which is authoritative):** 33 sift scenarios across ten families, 10 salvage defect classes, 7 conduit topologies, 6 lineage collections, 3 chain engagements (two of three stages, one of four), and 3 proctor sittings of 14 legs (one of which runs a lineage leg). `validate.py` clean with zero warnings; `test.py` green at 59,660 checks including a four-stage engagement driven stage to stage through the lineage capstone, a full sitting driven leg to leg, and a lineage walk driven move to move; `test-tty.py` green at 65 against a real pty. `dist/crux.pyz` builds and runs standalone.
 >
-> **Where to pick up.** Nothing is half-finished and nothing is blocking: every suite is green and the tree is clean. The three candidates, in the order they are worth doing:
+> **Where to pick up.** Nothing is half-finished and nothing is blocking: every suite is green and the tree is clean. **Every track now has an engine, and every engine has a checker that proves its content is solvable**, so what is left is content and evidence, in this order:
 >
-> 1. **`lineage`**, offline Active Directory path reasoning over synthetic BloodHound-shaped graphs. Track five, designed alongside crux and never started. It is a real track (new engine, new screens, its own phase), not content.
-> 2. **`proctor`**, 24-hour exam pacing. Track four. Every attempt has recorded `elapsed`, `runs` and `read_first` since Phase 0 precisely so this can be built without a backfill; the data is already there.
-> 3. **More chain engagements.** Two exist and cover the single-host and domain shapes, which is enough to prove the form; a third is content rather than engineering.
+> 1. **More `lineage` collections, if you want them.** Six now exist across four `teaches` values (`cost`, `reach`, `nesting`, `quiet`), using sixteen of the nineteen priced edge kinds. The three still unused (`AllExtendedRights`, `AllowedToAct` for RBCD, `ReadGMSAPassword`) are each a real shape a scenario could turn on, but the track already covers its argument. `validate.py --paths` is the instrument: a new collection has to beat the greedy strategy, and the fix when it does not is a better graph.
+> 2. **Play `proctor` and let it collect a real sample.** `pacing.TRACK_WEIGHT` is a labelled estimate and `validate.py --pacing` will not read the medians under eight completed attempts per track. That is not engineering, it is sitting down and playing, and it is what turns the one provisional number in the codebase into a measured one.
+> 3. **More chain engagements.** Two exist and cover the single-host and domain shapes, which is enough to prove the form; a third is content rather than engineering. A `lineage` leg is now possible in one, which the two existing engagements predate.
+> 4. **More engagements and collections, purely content now.** The chain-with-a-lineage-stage that was the last unbuilt composition is done (`chain-aldwych`); every composition the design allows now exists at least once, so anything further is another instance rather than a new capability.
 >
 > One open question, if the shipped artifact ever needs to be fully free of third-party paths: the `source` field still points at the local corpus. It is never displayed (D23) and `validate.py` audits it, so removing it would cost the check that has caught four real content errors. Moving the mapping to a dev-only file outside the package is the fix if it is ever wanted.
 >
 > **The lesson from Phase 0, and the reason `test-tty.py` exists.** For the whole of the build the space bar did nothing on the marking screen. The decoder produced `Key(' ')` while every screen compared against `parse('SPC')`, so the app's central verb was dead. **Twelve thousand green checks never touched it**, and could not have: a test that builds its input with `parse()` is asking the notation whether it agrees with itself. Driving the real app through a pty found it on the first run. Two permanent things came out of it: the decoder now agrees with the notation for every special key and `test.py` asserts that across the whole set, and `test-tty.py` is kept as a third suite. **The general form is worth remembering: a test that constructs its inputs the same way the code constructs its expectations cannot fail.**
 >
-> **The name.** Climbing term for the single hardest move on a route, and in plain English the heart of the matter. Chosen 2026-08-20 over `range` (too generic), `SSC` (welds three tracks into the name when a fourth and fifth are already planned), `quarry` and `assay`. The tracks are `sift`, `salvage` and `conduit`; the program name deliberately does not enumerate them.
+> **The name.** Climbing term for the single hardest move on a route, and in plain English the heart of the matter. Chosen 2026-08-20 over `range` (too generic), `SSC` (welds three tracks into the name when a fourth and fifth are already planned), `quarry` and `assay`. The tracks are `sift`, `salvage`, `conduit` and `lineage`, composed by `chain` and `proctor`; the program name deliberately does not enumerate them, and by 2026-08-24 it had been right not to twice over.
 >
 > **The one-line reason this project exists.** Waypoint tells you what to do next given a known state. hone makes you fluent in the tool. Nothing yet drills the two things in between: **producing** that state from a wall of raw output, and **executing** the thing Waypoint just told you to do when the code you found is broken and the host you want is three subnets away. Those are the two places OSCP attempts actually die.
 >
@@ -51,6 +52,8 @@ An offline terminal trainer for the parts of an engagement that are **judgement 
 | **sift** | Read raw tool output and extract the lead | Missing the one line that mattered in a 400-line scan, or chasing four that did not |
 | **salvage** | Take a broken proof-of-concept and make it land | Losing two hours to a PoC that was never going to run as written |
 | **conduit** | Reason about network topology and build the tunnel chain | Getting a foothold you cannot use because the next subnet is unreachable |
+| **lineage** | Read a domain graph and take the cheapest route through it, not the shortest | Following the highlighted line through a password reset you did not need |
+| **proctor** | Allocate a fixed clock across more work than it holds, and walk away from what is not paying | Hour six becoming hour eleven on the box that was never going to fall |
 
 **Primary user:** the author, preparing for OSCP.
 **Secondary user:** anyone handed the file. It must run with no install and no third-party packages, and it must be safe to hand to a stranger, which is what D2 and D7 are for.
@@ -86,7 +89,7 @@ These are settled. Do not relitigate them without a reason recorded here.
 | D2 | **crux never touches anything it did not create.** Every target is a loopback socket or a network namespace this process owns on this machine. No outbound connection, ever, for any reason, including checking for updates. | Inherited from hone's D1 and non-negotiable for the same reason: a training tool that quietly makes outbound connections is not a tool you can hand to a stranger. crux is closer to the line than hone was, because its whole subject is attacking things, so the rule has to be stricter rather than looser. |
 | D3 | **Python 3, standard library only.** No pip, no virtualenv, no third-party packages. Distributed as a single `.pyz` built with `zipapp`. | Proven by hone. Every dependency is a way this fails on a machine you cannot see, and the audience for an OSCP trainer is people on a Kali VM who do not want to debug your packaging. |
 | D4 | **Separate repository. The harness is a deliberate fork of hone's, not a shared library.** | Considered and rejected: a shared package (breaks "clone and run" with no installer), a git submodule (adds a step to the same), a monorepo (merges two projects whose scope statements are opposites). **The honest cost: a harness bug must be fixed twice.** The mitigation is to fork only what is genuinely generic (screen layer, input layer, state, scheduler, test helpers) and then treat the fork as a fork. Do **not** try to keep them in lockstep; that is how both end up worse. |
-| D5 | **One program, three tracks, track select on launch.** The program name does not enumerate the tracks. | Same argument as hone's D4: the harness gets written once. The name argument is separate and was the reason `SSC` lost: `proctor` (exam pacing) and `lineage` (AD path reasoning) are already sketched as tracks four and five, and a name that counts to three would have to be wrong or the project would have to stop growing. |
+| D5 | **One program, several tracks, track select on launch. The program name does not enumerate them.** (Written when there were three; there are now four skills and two compositions, which is the decision working rather than the decision aging.) | Same argument as hone's D4: the harness gets written once. The name argument is separate and was the reason `SSC` lost: `proctor` (exam pacing) and `lineage` (AD path reasoning) are already sketched as tracks four and five, and a name that counts to three would have to be wrong or the project would have to stop growing. |
 | D6 | **Every task is labeled `verified`, `graded`, or `self` in the UI, and the three are never blurred.** | Inherited from hone's D8, and it matters more here. A student who cannot tell "the app watched me reach that host" from "the app took my word for it" learns false confidence, and false confidence is the specific thing that fails people at hour nineteen of an exam. |
 | D7 | **Fictional targets, real defect classes.** `salvage` PoCs target crux's own mock services with invented version numbers and invented advisories. No working exploit for real software ships in this repository. | The transferable skill is the *defect class*: a Python 2 `urllib` call, a hardcoded callback IP, a moved endpoint, a payload that needs double-encoding. None of that gets less educational for pointing at a fictional CMS, and it means crux carries no dual-use weight and can be handed to anyone. It also means the content never rots when a real advisory is superseded. |
 | D8 | **`sift` scores precision and recall together, and marking a decoy costs points.** | If recall alone scored, the winning strategy is to mark every line, which is precisely the real-world failure being trained: chase everything, run out of clock. The score must make "I flagged nine things" a worse outcome than "I flagged the two that mattered". |
@@ -104,6 +107,10 @@ These are settled. Do not relitigate them without a reason recorded here.
 | D20 | **No crux content teaches target selection or reconnaissance against real infrastructure.** | The boundary that keeps D2 and D7 from being merely technical. crux drills judgement against fixtures. Where to point the judgement is not its subject. |
 | D21 | **Real output is wider than the terminal. The marking screen pans horizontally; content is never shortened to fit.** Added 2026-08-20 (c). | Discovered by authoring: a domain controller's LDAP line runs past 120 columns and the domain name, which is the entire tell, is at the end of it. The two alternatives were both worse. Truncating makes the scenario unsolvable at 80 columns. Authoring a shortened line teaches people to read output that nmap does not print, which is the one thing a fixture must never do. Panning cost about twenty lines and keeps the content honest. |
 | D23 | **Nothing the program displays names a training platform, a course, a vendor or an individual machine. It names the technique and, where one applies, the CVE.** Added 2026-08-20 (r). | Two reasons, and the second is the one that matters. The exercises stand on the technique being real, not on whose lab it appeared in, so the attribution adds nothing a student can use. And crux is meant to be handable to anyone, which a wall of somebody else's product names quietly prevents. The `source` field survives untouched because `validate.py` audits it and that audit has caught real errors; it is authoring metadata, `provenance.py` is the only thing that turns it into anything a person sees, and `test.py` walks every displayable string to keep it that way. |
+| D24 | **`TRACKS` means a skill with its own engine and its own exercises. `chain` and `proctor` are compositions and live outside it, in `COMPOSITE`.** Added 2026-08-24. | The line had to be drawn before there were two of them. Neither composition authors an exercise: they schedule the three skill tracks, one for narrative continuity and one against a clock, and every leg is a real scenario run by the engine that already runs it. `lineage` is the opposite case and joined `TRACKS` on the same day, because it is a fourth thing a person can be good at rather than a way of scheduling the other three. The practical payoff is that nothing downstream has to ask which kind a name is: `SECTIONS` means everything with content, `TRACKS` means the skills, `COMPOSITE` means the schedulers, and the picker, the loader and `validate.py` each read the one they actually mean. The alternative, folding `proctor` into `TRACKS`, would have made `track_summary` and every "the three skills" sentence quietly wrong. |
+| D25 | **A sitting's headline number is `sunk`: time spent past a leg's own share on a leg that then scored zero.** Added 2026-08-24. | The score is the small half of a pacing post-mortem, because everyone already knows whether they passed. Nobody has ever been shown how much of their clock bought nothing, and that is the quantity an exam is actually lost on. **Zero rather than "low"** is the definition, and that was the decision: pricing a leg that overran and came away with forty points would mean deciding what a partial result is worth per minute, which crux has no basis to do. Zero is unambiguous. It also makes the good case fall out with no special case in it, which is the tell that the definition is the right one: a leg you walked away from inside its share has no overrun, so it sinks nothing, so restraint is rewarded by the arithmetic rather than by a rule about restraint. |
+| D26 | **`lineage` prices every right, and grades the cheapest route rather than the shortest one.** Added 2026-08-24. | A collection tool ranks paths by edge count, and an edge is not a unit of anything: `ForceChangePassword` and `MemberOf` are one hop each, and one is free while the other is destructive, logged, and ends in a phone call to a help desk. Without prices the track would be a maze, and what it would teach is "follow the highlighted line", which is the exact instinct that walks people through a reset they did not need. The prices are not a difficulty rating: they are a rough claim about noise, reversibility and who notices. Somebody will disagree with the numbers, and that is allowed; the ordering is what carries the lesson and the ordering is not controversial. **The corollary is that arriving is not the whole grade**: an expensive route arrives and scores less, exactly as `proctor` scores a sitting you passed slowly. `MemberOf` is free and applied by closure rather than offered as a move, because a membership is a state and not an action; what that would have taught, that you hold more than you think, is taught by showing the closed set instead. |
+| D27 | **The whole collection is always readable, unfiltered, on its own screen.** Added 2026-08-24. | The moves list shows only the rights you can use right now, and if that were the only view the choice would be a guess: you cannot tell which of three identical-looking workstations has somebody logged into it without seeing the sessions, and a real operator can see them, because they collected the domain. So `m` opens everything, including rights out of principals you will never hold. **Reading ahead is the skill**, and a screen that filtered the graph down to what is immediately actionable would be doing the exercise on the student's behalf. It also matches how the work actually goes: look at the map, decide where you are trying to end up, then spend something. |
 | D22 | **A fixture line's id is derived from its content, never from its position.** Added 2026-08-20 (c). | Entries are shuffled per seed (D10), so a positional id would move the key with the seed and make the scenario unsolvable at some seeds. The first content-derived ids truncated to forty characters and three sudo grants under the same long path collided, which would have made marking one line mark all three; ids now carry a CRC over the whole text. `zlib.crc32` and not `hash()`, because string hashing is salted per process and ids would differ between `validate.py` and the app. |
 
 ---
@@ -120,17 +127,23 @@ crux/
 │   ├── config.py              paths, XDG, capability probe results
 │   ├── state.py               JSON state, export/import (D16)
 │   ├── scoring.py             precision/recall, decoy penalty, time (D8, D12)
+│   ├── pacing.py              allocation, overrun, sunk time (D12, D25)
+│   ├── lineage.py             edge prices, closure, the two searches (D26)
 │   ├── screens/               track select, scenario, result, stats
 │   ├── ui/                    Text spans, styling, caps detection (D15)
 │   ├── targets/               the things crux builds and owns (D2)
 │   │   ├── _fixture.py        seeded synthetic output builder (D10)
+│   │   ├── _graph.py          seeded synthetic AD collections (D10, D26)
 │   │   ├── mockhttp.py        instrumented HTTP service for salvage
 │   │   ├── mocktcp.py         instrumented raw TCP service for salvage
 │   │   └── netlab.py          namespace topology supervisor for conduit (D13)
 │   └── content/
 │       ├── sift/
 │       ├── salvage/
-│       └── conduit/
+│       ├── conduit/
+│       ├── lineage/           synthetic domains and the routes through them
+│       ├── chain/             engagements: the three tracks in order (D24)
+│       └── proctor/           sittings: the three tracks against a clock (D24)
 ├── validate.py                structural checks, exits non-zero on any error
 ├── test.py                    behavioural checks, must be green
 ├── build.sh                   zipapp -> dist/crux.pyz
@@ -228,11 +241,137 @@ nsenter --net=/proc/$SUPERVISOR_PID/ns/net ip -o link      # sibling joins the h
 
 ---
 
-## Chain mode (Phase 7) ✅ 2026-08-20
+## Track: lineage ✅ 2026-08-24 (engine and six collections)
+
+**The skill.** Reading an Active Directory collection and choosing a route
+through it. Not finding *a* route: finding the one worth taking.
+
+**The mechanic.** You hold one account and you are told which principal you
+have to end up holding. `m` opens the collection: every principal, every right
+out of it, whether or not you can use it yet (D27). Back on the moves, the list
+is the rights you can use **now**, each with what using it costs (D26). Enter
+buys one, your holdings grow, and the moves grow with them. Group memberships
+are free, transitive and never offered as moves, because a membership is a
+state rather than an action; the closed set of what you hold is on screen
+instead, which is where the "you already had it" lesson lands.
+
+**The budget is computed, not authored:** twice the cheapest route, floored, so
+one real mistake is survivable and two are not. Authoring it per scenario would
+drift from the graph the first time an edge moved.
+
+**Scoring.** What you spent against what the cheapest route cost, so the
+cheapest route is 100 and double it is 50. **Arriving expensively still
+arrives**, which is the point: the trap scenario's wrong answer works, and a
+trap that failed outright would teach "do not press that" rather than the thing
+that transfers. Not arriving is worth nothing, and how close you got is
+reported prominently and kept out of the score, exactly as a `salvage` script
+meeting three of four conditions is.
+
+**What the debrief shows.** Your route, priced. Anything you paid for that led
+nowhere, which is the graph's version of `sift`'s "what you chased". The
+cheapest route with a sentence against each step saying what made it cheap. And
+where the graph has the gap, **what a map that counts edges would have drawn
+instead**, side by side with what it costs.
+
+**Content, and how it is audited.** Three collections so far. Each authors the
+*structure*, because the structure is the exercise; names, ordering and padding
+are drawn per seed (D10), and `validate.py` proves the cheapest route is the
+same set of rights at all eight probe seeds, the same key-stability check
+`sift` gets. Each also declares **what it teaches**, and that claim is proved
+against the built graph rather than believed:
+
+| Scenario | Teaches | What `validate.py` proves |
+|---|---|---|
+| `lineage-reset` | `cost` | the fewest-edges route really does cost more than the cheapest one (reset vs. session) |
+| `lineage-culdesac` | `reach` | a branch out of what you hold really does fail to reach the objective, and costs something to enter |
+| `lineage-nested` | `nesting` | you really do start holding more principals than you were handed, through nested groups |
+| `lineage-delegation` | `reach` | the only arriving route runs through a delegation edge, and the strongest-looking rights are dead ends |
+| `lineage-laps` | `quiet` | the cheapest route writes nothing, while an equally affordable route that arrives does write |
+| `lineage-dcsync` | `reach` | the objective is the krbtgt hash, and the route that stops at Domain Admins never reaches it |
+
+**A fourth `teaches` value, `quiet`, landed with `lineage-laps`** and is the one worth calling out. Cost and noise are different axes: reading a LAPS password and resetting an administrator's password can cost the same and differ entirely on what they leave behind. `WRITES` in `lineage.py` partitions the rights that change the directory from the ones that only read it, `validate.py` proves a `quiet` scenario's cheapest route writes nothing while an affordable arriving alternative does, and the greedy-cost ceiling is deliberately waived for `quiet` (its two routes cost the same by design, so a cost-only strategy is *meant* to score full marks; the reading it trains is noise, which the cost simulator cannot see).
+
+**And a strategy is measured rather than assumed.** `validate.py --paths`
+prints what "always take the cheapest visible move" scores across seeds, the
+lineage answer to `--scores`. It earned its keep immediately: the first drafts
+of two scenarios scored 85 and 82 against that strategy, meaning a student who
+never opened the collection would nearly have won. Both gained cheap branches
+that go nowhere, and greedy now scores 38 and 70. **The fix was a better graph,
+never a harsher scorer**, which is the same rule `GREEDY_CEILING` follows one
+track over.
+
+**Still to do on this track**, and it is content rather than engineering: more
+collections. The engine covers the shapes that matter (priced rights, nesting,
+cul-de-sacs, sessions, delegation, replication, the read/write noise axis, two
+arriving routes at different prices) and nineteen edge kinds are priced, of
+which the six scenarios now use sixteen. The three unused kinds
+(`AllExtendedRights`, `AllowedToAct`, `ReadGMSAPassword`) are each a real shape
+a future collection can turn on.
+
+---
+
+## Track: proctor ✅ 2026-08-24
+
+**The skill.** Allocation and abandonment. The skill tracks each ask
+whether you can do a thing; none of them asks what you do when there is more
+work in front of you than clock behind you. That decision has two halves and
+neither is taught anywhere: how much of the budget a piece of work is entitled
+to, and when to walk away from one that is not paying.
+
+**The mechanic.** A **sitting** is several scenarios against one budget that
+never stops. Each leg gets a **share** of that budget, weighted by track, and
+the share is not a par time: it is what that leg is entitled to if the budget
+is spread evenly across the work. Cross it and you are spending the next leg's
+clock. One new verb, `X`, walks away from the leg you are on: you take the zero
+and you keep the time. The sitting ends when the budget is gone, not when the
+work runs out, so legs you never reached score nothing and say so.
+
+**The post-mortem is the point, and the score is the small half of it.** What
+the result screen leads on is `sunk` (D25): minutes spent past a leg's own
+share on a leg that then scored zero. It also shows where the rest of the clock
+went, which legs were walked away from and whether the call came early or late,
+and which legs the clock ate before you reached them. `p` on the track list
+opens the same analysis over your whole history rather than one sitting.
+
+**Built as a controller on the existing `on_done` seam, not a fourth engine**,
+exactly as chain mode was (D24). A leg is an ordinary `MarkScreen`,
+`SalvageScreen` or `ConduitScreen`; what a sitting adds is the clock, the
+share, the abandon verb and the ending. Two things had to reach every screen a
+sitting builds, and both are cross-cutting rather than per-engine, so they live
+on one module-level hook beside `OPEN_HELP`: the remaining budget, folded into
+whatever header is on screen, and the abandon key, added to whatever footer is
+on screen. A timed sitting whose clock is invisible while you work is not a
+timed sitting, and a key that works but is never advertised is screen contract
+rule 4 broken.
+
+**Composition, and why it is drawn rather than authored.** A sitting names
+tracks and optional pools, not scenario ids, and fills each slot with what you
+have **not played**, then what you played longest ago, spreading across
+families on the tie-break. A fixed playlist would measure less every time it
+was replayed, because a student who knows where the lead is does not overrun.
+
+**Three sittings, three different arguments.** A short one where the budget
+fits, so the mechanic is learned before it costs anything. A standard one that
+fits only if nothing goes wrong. And **one that cannot be finished**: six legs,
+a budget sized for about half of them, and a pass mark that clears on the four
+short ones. Nothing on screen says so, because being told is worth nothing and
+working it out at minute nineteen is worth a great deal.
+
+**What it does not claim.** crux cannot make anyone sit twenty-four hours, and
+the intro screen says so in as many words. A compressed sitting trains the
+allocation and the walking away. Endurance is not on offer, and calling a
+forty-minute run an exam would be the same class of lie as simulating a
+verification and reporting it as one (D14).
+
+---
+
+## Chain mode (Phase 7, extended 2026-08-24) ✅
 
 One scenario carried through all three tracks: sift the output to find the lead, salvage the PoC that exploits it, conduit your way from that foothold to the next subnet. This is the reason the three tracks are one program rather than three, and it is the closest thing crux has to a box.
 
-**Built as a controller plus an `on_done` seam, not a fourth engine.** Each play-screen gained one optional callback: when a stage completes, instead of stopping at its own result it calls `on_done(score)`, and the `Chain` controller stores the score and builds the next stage or the final engagement result. That is the whole mechanism, and it means a chain leg is the identical code path to standalone practice, verified the same way, with only the ending changed. A stumble never blocks the engagement: you always reach all three stages and the result reports honestly which fell, which is the difference between "you rooted it" and "you got a foothold and could not move". `chain` is a fourth section in the loader and on the picker, kept out of `TRACKS` so everything meaning "the three skills" still means exactly that; `SECTIONS` is what means "all content".
+**Built as a controller plus an `on_done` seam, not a fourth engine.** Each play-screen gained one optional callback: when a stage completes, instead of stopping at its own result it calls `on_done(score)`, and the `Chain` controller stores the score and builds the next stage or the final engagement result. That is the whole mechanism, and it means a chain leg is the identical code path to standalone practice, verified the same way, with only the ending changed. A stumble never blocks the engagement: you always reach all three stages and the result reports honestly which fell, which is the difference between "you rooted it" and "you got a foothold and could not move". `chain` is a fourth section in the loader and on the picker, kept out of `TRACKS` so everything meaning "the skills" still means exactly that; `SECTIONS` is what means "all content".
+
+**Extended 2026-08-24 to a four-stage form, and the Aldwych engagement.** A chain was exactly `(sift, salvage, conduit)` until `lineage` existed; now it is any **prefix of the engagement order** `(sift, salvage, conduit, lineage)` of length three or four (`CHAIN_ORDER` in `validate.py`). The prefix rule keeps the fiction a pipeline, a chain that ran salvage before sift would teach the wrong sequence, while letting an Active Directory engagement carry the fourth stage where the domain half of the exam actually ends. The seam did not change: a lineage stage is an ordinary `WalkScreen` with an `on_done` callback, the same as the other three. What had to change was small and is the same generalisation `proctor` needed: `_passed` gained a lineage arm (arriving is the win, as landing is for conduit), `_stage_line` now reads `total` or `total_score` off whatever the stage returns rather than branching per track, and a lineage stage is `graded` like sift. `chain-aldwych` is the engagement: an anonymous LDAP dump with a password in a `description`, a template injection whose PoC was written for the previous version, a forward with a typo'd destination port, and a graph from that same service account to Domain Admins whose shortest path is its loudest. Every leg is run for real by `validate.py`, and the lineage leg is proved solvable by `check_lineage_body` exactly as a standalone collection is.
 
 ---
 
@@ -254,7 +393,7 @@ Scenario(
 )
 ```
 
-Per-track payload: `sift` carries the fixture spec, the key (line ids that are leads), the decoys worth naming in feedback, and the action choices. `salvage` carries the defect class list, the broken source, the service spec, and the hit condition. `conduit` carries the topology spec and the probe.
+Per-track payload: `sift` carries the fixture spec, the key (line ids that are leads), the decoys worth naming in feedback, and the action choices. `salvage` carries the defect class list, the broken source, the service spec, and the hit condition. `conduit` carries the topology spec and the probe. The two composite sections (D24) carry schedules rather than exercises: `chain` carries its stages, and `proctor` carries a budget, a pass mark and the slots to spend the budget on. Neither carries provenance of its own, because the provenance rides on the scenarios they schedule, where it was already audited.
 
 `validate.py` is authoritative on counts and must be able to prove, at minimum: every scenario id is unique, every `waypoint` value is a plausible node id, every `source` path exists when the vault is reachable, every `sift` key line is actually present in the fixture the seed produces, every `salvage` scenario's reference solution makes the mock service record a hit, and every `conduit` topology tears down without leaking a namespace. **The reference-solution check is the one that matters most**: it is what proves content is solvable rather than merely well-formed, and it is exactly the check that made hone's adapter content trustworthy.
 
@@ -302,8 +441,31 @@ Three engine additions the content needed, all data rather than new machinery: a
 ### Phase 7: chain mode ✅ 2026-08-20
 See the Chain mode section above. Done: the Wexler Corp engagement, three stages, each a real run of its track, ending on a recorded engagement scored by how much of the box fell.
 
+### Phase 8: proctor ✅ 2026-08-24
+Track four: the pacing track, built on the D12 time data that has been recorded since Phase 0. See the *Track: proctor* section above for what it is. **Done, three sittings.** `pacing.py` holds every number the track reports as a pure function of recorded attempts, `screens/proctor.py` holds the controller and the four screens, and the sittings are authored content like everything else.
+
+**The D12 bet paid.** Nothing needed backfilling: `elapsed` had been on every attempt since the first commit and the whole track is built on it. Two fields were added for what a sitting alone knows, `sitting` and `abandoned`, and they are the same argument one level down: a zero you chose at four minutes and a zero you fought for at twenty are opposite outcomes, and a history storing only the score could never tell them apart afterwards.
+
+**Two harness bugs found, and the second was pre-existing.** Adding an abandon key to a marking screen that was already exactly at the frame width pushed a hint off the edge: the key was advertised, clipped, and therefore not advertised at all. The footer now **wraps** rather than truncating, which fixes the class rather than that one screen, and `test.py` now checks every promised key against the rendered *frame* instead of against the hint list. That check immediately found the same fault sitting there already: **`? help` had been clipped off `MarkScreen` at 80x24 since the pan hint was added**, on the narrowest terminal crux claims to support, with nothing to do with `proctor`. Separately, a long scenario title plus a running clock tore the top border open, because `box_top` clipped the whole line and took the corner with it. The header now gives the *title* away first, since the title is the half that is already on screen elsewhere, and `test.py` asserts every frame still closes on its own corner at every width.
+
+**One arithmetic bug the screens found that the tests had not.** The sunk-time note counted the wrong population: it reported the minutes correctly and then attributed them to `dry` legs (ridden to the end), so a sitting where both overruns ended in a late walk-away printed *"14m 40s went past your own allocation on 0 legs"*. `sank` and `dry` are genuinely different sets and now both exist. It was found by rendering the screens and reading them, which is worth remembering: 39,000 green checks did not catch a sentence that contradicted itself in the middle.
+
+**`TRACK_WEIGHT` is a labelled estimate, and that is a deliberate difference from `DECOY_WEIGHT`.** The decoy weight could be settled from the content alone, because what a greedy answer scores is a property of the authored screens. How long a leg takes is a property of a person, so only recorded play can settle it, and there are two attempts in this history. `validate.py --pacing` prints the weights beside whatever the real medians say and **declines to draw a conclusion under eight completed attempts per track**. The estimate being provisional is fine; a guess presented as a measurement would not be.
+
+### Phase 9: lineage ✅ 2026-08-24 (engine and six collections)
+Track five, and the last of the two that were sketched alongside crux and are the reason D5 exists. See the *Track: lineage* section above. **Engine done, three collections authored.** `crux/lineage.py` is the prices, the closure and the two searches; `crux/targets/_graph.py` is the seeded collection builder; `crux/screens/lineage.py` is the walk, the collection and the debrief. `lineage` joins `TRACKS` rather than `COMPOSITE` (D24), because unlike `chain` and `proctor` it is a fifth thing a person can be good at.
+
+**One search function, not two.** The cheapest route and the fewest-edges route differ only in what an edge is worth, so `_search` takes the weighting and both callers pass a lambda. The first version was two functions and they had already drifted on how they treated free edges before either was called.
+
+**Two bugs, and the second is the more interesting one.** A hand-written probe graph caught `dead_ends` calling the **winning move** a dead end: the last step of a clean walk buys an account with no priced rights out of it, because it is the end of the road on purpose, and "nothing leads out of here" was true of it in the same way it is true of a cul-de-sac. A student who played perfectly was being told they had wasted their winning move. And a test that asserted against `render()` rather than `content()` was really asserting about the scroll position, since the debrief is longer than a terminal; that one was a bad test rather than a bad screen, but it is the same confusion that let the height backstop eat a debrief back in Phase 4.
+
+**The `teaches` field is the idea worth reusing.** Content declares the property it exists to demonstrate and `validate.py` proves that property against the built graph. A claim in a docstring is a claim nobody rechecks; a claim in a field that a checker recomputes cannot rot when an edge moves.
+
+### Phase 10: the four-stage engagement ✅ 2026-08-24
+The last unbuilt composition. A `lineage` leg already ran inside a sitting; a chain did not, and that one was a real decision rather than a line of content because the chain contract was deliberately the three-track "find, land, reach" engagement. **Done: the contract is now a prefix of `CHAIN_ORDER = (sift, salvage, conduit, lineage)` of length three or four, and `chain-aldwych` is the four-stage engagement.** See the *Chain mode* section above. The stage-order check that has caught real bugs is preserved as the prefix rule, `validate.py` runs the new engagement's salvage and conduit legs for real and proves its lineage leg solvable, and `test.py` drives it stage to stage through the capstone.
+
 ### Later, not scheduled
-`proctor` (24-hour exam pacing, post-mortem over the D12 time data) and `lineage` (offline AD path reasoning over synthetic BloodHound-shaped graphs) as tracks four and five. Both were designed alongside crux and are the reason D5 exists.
+More `lineage` collections and more `chain` engagements, both purely content now. **Every composition the design allows exists at least once**: a lineage leg in a sitting and a lineage stage in a chain both work, so nothing further is a new capability. The three unused edge kinds (`AllExtendedRights`, `AllowedToAct`, `ReadGMSAPassword`) and a second four-stage engagement are the obvious next instances if the track ever wants them.
 
 ---
 
@@ -331,7 +493,10 @@ Recorded so they are not re-derived. All checked on this machine.
 2. **How much noise is realistic without being tedious?** A real `linpeas` run is thousands of lines. Some compression is necessary; too much deletes the skill. Needs calibration against real scores, not a guess.
 3. **Can the namespace supervisor be made reliable?** Phase 5 spike. D14 is the answer if not.
 4. **Waypoint node titles: read Waypoint's data files at runtime, or vendor a node list?** Vendoring drifts; reading needs to locate Waypoint the way hone locates the vault via `WAYPOINT_VAULT`. Decide in Phase 1 when the first link is actually needed.
-5. **Should `sift` fixtures ever be *this machine's* real output** (a scan of crux's own loopback sockets, the hone `netlab` trick)? It would raise realism at some cost in determinism. Not needed before Phase 2.
+5. **What are the track weights really?** `pacing.TRACK_WEIGHT` is an estimate (sift 1, lineage 2, salvage 3, conduit 3) and is labelled as one everywhere it appears. It cannot be settled without eight or so completed attempts per track from a real person; `validate.py --pacing` is the instrument and it currently declines to answer. Revisit once the history is deep enough, not before.
+6. **Are the `lineage` edge prices right?** They are a defensible ordering rather than a measurement, and unlike `TRACK_WEIGHT` no amount of play will settle them: they encode a judgement about noise and reversibility that a trainer has to make on somebody's behalf. The ordering is what carries the lesson; if an individual number is ever argued with, argue about the ordering it implies rather than the number.
+7. **Does a sitting stay honest on replay?** Slots draw unseen content first, which holds for as long as there is unseen content. After that a sitting is being played by someone who knows the answers, and it measures less. The authored fallback if it turns out to matter is a pool per slot rather than a whole track, which is already supported and unused.
+8. **Should `sift` fixtures ever be *this machine's* real output** (a scan of crux's own loopback sockets, the hone `netlab` trick)? It would raise realism at some cost in determinism. Not needed before Phase 2.
 
 ---
 
@@ -339,6 +504,10 @@ Recorded so they are not re-derived. All checked on this machine.
 
 | Date | What happened |
 |---|---|
+| 2026-08-24 (d) | **Phase 10: the four-stage engagement, and crux's compositions are complete (still v1.7.0).** The last unbuilt composition was a `lineage` stage inside a `chain`, held back because the chain contract was deliberately the three-track engagement. Widened it the minimal way: a chain is now a **prefix** of `CHAIN_ORDER = (sift, salvage, conduit, lineage)` of length three or four, which preserves the stage-order check (a chain still cannot run salvage before sift) while allowing the AD fourth stage. The seam was unchanged, a lineage stage is a `WalkScreen` with an `on_done` like the other three; the only edits were the same generalisation `proctor` already needed (`_passed` gained a lineage arm, `_stage_line` reads `total` or `total_score` off whatever the stage returns) plus a `graded` tier for the lineage stage and a `check_lineage_body` dispatch in the chain validator. **`chain-aldwych`** is the engagement: a password in an LDAP `description`, a template injection whose PoC targets the previous minor version (endpoint moved v1->v2, field renamed), a forward with a typo'd destination port, and a graph from that same `svc_deploy` account to Domain Admins whose three-edge reset route is louder and dearer than the four-edge session route. Every leg runs for real in `validate.py`; the lineage leg is proved solvable exactly as a standalone collection. `test.py` drives all four stages through the capstone and asserts a clean run passes four of four. One existing test that asserted "every engagement is three stages" was updated to the prefix rule. `validate.py` clean at zero warnings, `test.py` 59,660, `test-tty.py` 65, `dist/crux.pyz` builds and runs. **Every engine is built and every composition exists at least once; what remains is content.** |
+| 2026-08-24 (c) | **lineage to six collections, a fourth `teaches` value, and a lineage leg inside a sitting (still v1.7.0).** Three new domains: `delegation` (the only arriving route runs through a `AllowedToDelegate` edge that does not read as a path, while the strongest-looking rights are dead ends), `laps` (reading a LAPS password and resetting an admin cost the same and differ entirely on what they leave behind), and `dcsync` (the objective is the krbtgt hash, and the route that stops at Domain Admins never reaches it). **A new `teaches="quiet"`** splits cost from noise: `WRITES` in `lineage.py` partitions directory-writing rights from read-only ones, `validate.py` proves a quiet scenario's cheapest route writes nothing while an affordable arriving alternative does, and the greedy-cost ceiling is waived for it because its routes cost the same by design. **A content bug the solver caught:** `delegation` was authored as `teaches="cost"` claiming delegation was the cheap route, but controlling a service account and then using its delegation is a write plus the delegation, so a backup-operators route was genuinely cheaper; it is `reach` now and the debrief says why delegation can never be the single cheapest edge. **A checker bug the LAPS graph caught:** the quiet check deleted the cheapest route's edges and re-solved, which took a shared tail with it and reported no loud alternative; replaced with `cheapest_through`, which forces a route through one edge without deleting anything. **D24's promise cashed:** the standard sitting now runs a lineage leg, which needed `proctor`'s score reader generalised from `total if sift else total_score` to reading whichever attribute the leg's engine actually exposes (a lineage `WalkScore` has `total`, no `total_score`, and would have crashed the sitting the first time one was drawn). Sixteen of nineteen edge kinds now used. `validate.py` clean at zero warnings, `test.py` 59,622, `test-tty.py` 62, `dist/crux.pyz` builds and runs. |
+| 2026-08-24 (b) | **Phase 9: `lineage`, the fourth skill track (v1.7.0).** Track five of the D5 sketch, and the last engine crux was missing. You hold one account in a synthetic Active Directory collection and have to end up holding another; `m` opens the whole collection unfiltered (D27) and the moves list shows only the rights you can use, each priced. **The prices are the track** (D26): a collection tool ranks routes by edge count, and an edge is not a unit of anything, so the cheapest route is routinely not the shortest and the grade is what you spent against what the cheapest cost. Arriving expensively still arrives and scores less, which is deliberate: a trap that failed outright would teach "do not press that". `MemberOf` is free, transitive and applied by closure rather than offered as a move. **Three collections, each proving a different claim, and the claim is checked rather than believed:** the `teaches` field names the property and `validate.py` recomputes it against the built graph, so `teaches="cost"` fails unless the fewest-edges route really does cost more. Same key-stability contract as `sift`: the cheapest route must be the same set of rights at all eight probe seeds. **`--paths` earned its keep on its first run**, the lineage answer to `--scores`: it measures what "always take the cheapest visible move" scores, the first drafts of two collections scored 85 and 82 against it, meaning a student who never opened the map would nearly have won, and both gained cheap branches that go nowhere until greedy fell to 38 and 70. The fix was a better graph, never a harsher scorer. **Two bugs.** `dead_ends` called the *winning* move a dead end, because the last account on a clean route has no priced rights out of it in exactly the way a cul-de-sac does not, so a perfect walk was told it had wasted its final move; caught by a hand-built probe graph. And one new test asserted against `render()` where it meant `content()`, so it was really asserting about a scroll position. `validate.py` clean at zero warnings, `test.py` 59,287, `test-tty.py` 62, `dist/crux.pyz` builds and runs. |
+| 2026-08-24 | **Phase 8: `proctor`, the pacing track (v1.6.0).** Track four, and the first thing built on the D12 bet: `elapsed` has been on every attempt since the first commit, nothing needed backfilling, and the whole track stands on it. A **sitting** is several scenarios against one budget that never stops; each leg gets a **share** of that budget weighted by track; `X` walks away from a leg and keeps the clock; the sitting ends when the budget does, so legs you never reached score nothing. Three sittings, and the third **cannot be finished on purpose**: six legs, a budget for about half, and a pass mark that clears on the four short ones. `pacing.py` holds every reported number as a pure function of recorded attempts (D17 holds: nothing there reads a clock), and `sunk` is the headline (D25): time past a leg's own share on a leg that scored zero. Slots draw **unseen content first**, then least-recently-played, spreading across families on the tie-break, because a fixed playlist measures less on every replay. `chain` and `proctor` were pulled out of `TRACKS` into a new `COMPOSITE` (D24): neither authors an exercise, both schedule the three that do. **Two harness bugs, and the second was already shipping.** The abandon key pushed `MarkScreen`'s footer past the frame and was clipped, so a key the footer promised did not exist; footers now wrap, and `test.py` checks every promised key against the rendered *frame* rather than the hint list. That new check immediately found **`? help` had been clipped off `MarkScreen` at 80x24 since the pan hint landed**, nothing to do with proctor, on the narrowest terminal crux supports. Separately a long title plus a running clock tore the top border open; `box_top` now gives the title away rather than the corner, and every frame is asserted to close at every width. **One bug the tests could not have caught:** the sunk note counted `dry` legs (ridden to the end) while summing `sunk` minutes (which include late walk-aways), printing *"14m 40s went past your own allocation on 0 legs"*. Found by rendering the screens and reading them, at 39,000 green checks. **`TRACK_WEIGHT` is a labelled estimate and stays one:** unlike `DECOY_WEIGHT` it cannot be settled from content, only from play, and `--pacing` declines to read a median under eight completed attempts per track. `validate.py` clean at zero warnings, `test.py` 39,794, `test-tty.py` 54, `dist/crux.pyz` builds and runs. |
 | 2026-08-20 (u) | **Reset progress, and a work-file bug it uncovered (v1.5.0).** Asked for a way to reset progress; building it found two bugs in the same code that had to go first, because a reset means nothing if the app resets your files behind your back. **`salvage` rewrote your script from the original on every open**, silently destroying repairs between visits, while **`conduit` never rewrote it**, so a mangled script could not be recovered: one threw work away, the other trapped you in it. Both keep the file now and both restore on request. Keeping it needed `crux/progress.py` rather than a one-line `if not exists`, because the mock target takes an **ephemeral port**, so the address crux injected last time is dead on return: rewriting the file would destroy edits, leaving it would point at nothing. crux records exactly which strings it injected in `.crux-meta.json` and swaps **only those**. That precision is load-bearing, since `salvage-address` is *about* a hardcoded `127.0.0.1:4444` callback the student must keep, and a blunt "rewrite anything local" would break the exercise it was meant to help; both directions are tested. Three reset surfaces, because reset means different things: `--reset [history|work|all]` (states the damage, asks, points at `--export`, `--yes` skips), `R` on the home screen (a screen listing what is on disk, every option needing a second keypress), and `R` twice inside a salvage or conduit scenario to restore just that script. |
 | 2026-08-20 (t) | **Result screens redesigned to teach (v1.4.0).** Reported from real use: at the end of a sift scenario it was not clear what you got right or wrong, and the last screen missed the chance to explain. It did. The old screen printed a score and bare `missed`/`chased` labels, leaving the student to work out why the line they skipped was the lead and why the one they chased was a trap, **which is the entire lesson of the track**. `Line` gained a `why`, and all **87 leads and decoys** across every sift scenario and both chain sift stages now carry one. The result is a marked-up copy of the key under headings that name the verdict: *What mattered* (every lead, found or missed), *What you chased* (decoys and noise told apart), *What you left alone, correctly* (decoys refused, which was never acknowledged), *What you decided to do*, and *The habit*. The headline became a sentence rather than a band name: "You missed the way in, and went after 2 that was not it." Also fixed: the salvage result appended its requirement hint to the same line, where the frame clipped it and threw away the only sentence saying what was still wrong; it wraps underneath now. Guarded both ways, `validate.py` warns on any key line that explains nothing and `test.py` asserts every explanation reaches the screen, playing each scenario badly on purpose because that is the attempt that most needs explaining. |
 | 2026-08-20 (s) | **Status sweep before pausing.** Checked the three sources of truth against `validate.py` rather than against each other, which is what found the drift. The plan's START HERE still claimed one chain engagement (there are two), a signal-scope splash (replaced by the scan-lock), seven sift families (ten) and stale suite counts; the README's status block was still describing v1.0.0 at twenty-six scenarios; and the `MEMORY.md` index line still read v1.0.0. All three corrected and now agree. The START HERE also gained an explicit **Where to pick up** with the three candidates ranked (`lineage`, then `proctor`, then more engagements) and the one open question recorded: the `source` field still points at the local corpus, is never displayed (D23), and is what `validate.py` audits, so removing it would cost the check that has caught four real content errors. The project memory was rewritten from a single wall of text into state, the three rules that are expensive to rediscover, and the verification contract. |

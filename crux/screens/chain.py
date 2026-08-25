@@ -36,15 +36,28 @@ from . import POP, ScrollScreen, Screen, replace
 def _passed(track: str, score) -> bool:
     if track == 'sift':
         return score.total >= 90 and not score.chased and not score.missed
+    if track == 'lineage':
+        # Arriving is the win, exactly as landing is for salvage and conduit.
+        # An expensive route still rooted the domain; the cost shows in the
+        # stage line and the standalone debrief, not in whether the stage
+        # counts toward "rooted".
+        return bool(getattr(score, 'reached', False))
     return bool(getattr(score, 'landed', False))
 
 
 def _stage_line(track: str, score) -> tuple[float, str, float]:
-    """(0..100, one-line summary, elapsed) normalised across the two score
-    types the tracks produce."""
-    if track == 'sift':
-        return score.total, score.summary(), score.elapsed
-    return score.total_score, score.summary(), score.elapsed
+    """(0..100, one-line summary, elapsed), normalised across every score
+    type a stage can produce.
+
+    sift and lineage expose `total`; salvage and conduit expose `total_score`
+    because their score is binary and the name says so. Ask for whichever the
+    object has rather than branch per track, the same way `proctor._score_of`
+    does, so a fifth engine following either convention needs no change here.
+    """
+    total = getattr(score, 'total', None)
+    if total is None:
+        total = score.total_score
+    return total, score.summary(), score.elapsed
 
 
 class Chain:
@@ -68,7 +81,9 @@ class Chain:
     # -- flow --------------------------------------------------------------
 
     def _sub_scenario(self, stage: Stage) -> Scenario:
-        tier = 'graded' if stage.track == 'sift' else 'verified'
+        # sift and lineage are graded (crux computes the key); salvage and
+        # conduit are verified (crux watched the real end state).
+        tier = 'graded' if stage.track in ('sift', 'lineage') else 'verified'
         return Scenario(
             id=f'{self.scenario.id}:{stage.track}', track=stage.track,
             title=stage.title or self.scenario.title, tier=tier,
@@ -85,6 +100,9 @@ class Chain:
         if stage.track == 'salvage':
             from .salvage import SalvageScreen
             return SalvageScreen(self.session, sub, on_done=done)
+        if stage.track == 'lineage':
+            from .lineage import WalkScreen
+            return WalkScreen(self.session, sub, on_done=done)
         from .conduit import ConduitScreen
         return ConduitScreen(self.session, sub, on_done=done)
 
@@ -136,7 +154,8 @@ class ChainIntroScreen(Screen):
         rows.append(Text())
         rows.append(line('  Three stages, in order:', p.muted))
         names = {'sift': 'find the lead', 'salvage': 'land the exploit',
-                 'conduit': 'reach the next host'}
+                 'conduit': 'reach the next host',
+                 'lineage': 'take the domain'}
         for i, stage in enumerate(self.body_data.stages, 1):
             rows.append(line(f'    {i}. {stage.track}   '
                              f'{names.get(stage.track, "")}', p.info))

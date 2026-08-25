@@ -25,7 +25,7 @@ from dataclasses import dataclass
 
 from ..keys import Key
 from ..render import (Caps, Text, box_bottom, box_row, box_sep, box_top,
-                      footer, line)
+                      footer_lines, line)
 
 # --------------------------------------------------------------------------
 # Actions
@@ -40,6 +40,40 @@ OPEN_HELP = None
 def set_help_factory(factory) -> None:
     global OPEN_HELP
     OPEN_HELP = factory
+
+
+#: The `proctor` sitting that is running right now, or None. Held here for the
+#: same reason `OPEN_HELP` is: it is cross-cutting, every screen needs it, and
+#: threading it through the constructor of every play screen and every screen
+#: those push would put a sitting-shaped argument into three engines that have
+#: nothing to do with sittings.
+#:
+#: **Two things depend on it and both are contract obligations.** A timed
+#: sitting whose clock is invisible while you are working is not a timed
+#: sitting, so the remaining budget is folded into the header of whatever is on
+#: screen. And the abandon key is the one verb a sitting adds to the tracks it
+#: schedules, so the footer has to advertise it wherever it works, which is
+#: screen contract rule 4 and the reason it is added here rather than in each
+#: engine.
+#:
+#: An object rather than a callback pair. It must answer three questions:
+#: `banner()` for the clock, `owns(screen)` for whether this screen is the leg
+#: currently being played, and `abandon()` for the key. Anything satisfying
+#: those three can stand in, which is what `test.py` does.
+PACER = None
+
+
+def set_pacer(pacer) -> None:
+    """Start or end a sitting's hold on the header and the abandon key.
+
+    Cleared on every route out of a sitting, which is the part that is easy to
+    get wrong: the sitting ending is the obvious one, but `H`, `q` and an Esc
+    out of the leg being played all leave it too, and a pacer left set would
+    paint a dead clock onto the home screen. `test.py` asserts it is None after
+    each of those.
+    """
+    global PACER
+    PACER = pacer
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +161,14 @@ class Screen:
     def handle(self, key: Key) -> Action:
         """Override for screen-specific keys, then `return super().handle(key)`."""
         name = key.name
+        # The one verb a sitting adds. Uppercase for the same reason `H` and
+        # `R` are: every lowercase letter is an answer somewhere in this app,
+        # and walking away from a leg is not something to do by fat finger.
+        # Gated on `owns` so it acts on the leg being played and not on a help
+        # page that happens to be sitting above it.
+        if (name == 'X' and not key.ctrl and not key.alt
+                and PACER is not None and PACER.owns(self)):
+            return PACER.abandon()
         if name == 'ESC':
             # Esc goes back, and at the root there is nowhere back to, so it
             # does nothing. It used to quit, which made the most-pressed key
@@ -136,14 +178,25 @@ class Screen:
             # ignoring it, `q` is the advertised way out, and the home footer
             # never offered Esc in the first place, so this takes away a
             # behaviour nobody was told about rather than one anybody used.
-            return POP if self.can_pop else STAY
+            if not self.can_pop:
+                return STAY
+            # Esc out of the leg you are playing leaves the sitting. Esc out
+            # of a help page above it does not, which is why this asks whether
+            # the pacer owns *this* screen rather than clearing it outright.
+            if PACER is not None and PACER.owns(self):
+                set_pacer(None)
+            return POP
         if name == 'H' and not key.ctrl and not key.alt:
             # Deliberately uppercase. Every lowercase letter is an answer
             # somewhere in this app, and the screens where H would be typed
             # (marking screens, a text prompt) consume their own keys before this
             # is ever reached.
-            return ROOT if self.can_pop else STAY
+            if not self.can_pop:
+                return STAY
+            set_pacer(None)
+            return ROOT
         if name == 'q' and not key.ctrl and not key.alt:
+            set_pacer(None)
             return QUIT
         # Every footer advertises `?`. It did nothing for the whole build,
         # which is the rule 4 failure the footer contract exists to
@@ -176,18 +229,30 @@ class Screen:
         colour = caps.palette.warn if heavy else caps.palette.border
 
         body = self._checked_body(caps)
+        status = self.status
+        hints = self._checked_hints(caps)
+        if PACER is not None:
+            banner = PACER.banner()
+            if banner:
+                status = f'{banner}   {status}' if status else banner
+            if PACER.owns(self):
+                hints = hints + [('X', 'abandon')]
+
+        # The footer is built before the body is windowed, because it decides
+        # how much room the body gets: a wrapped footer is two rows, not one.
+        foot = footer_lines(caps, hints, max(8, w - 3))
 
         # Hard backstop on height, enforced once here rather than trusted to
         # every screen. Screens window their own content sensibly, but a
         # terminal smaller than the documented minimum must still degrade by
         # truncating rather than by running off the bottom.
-        overhead = 4                       # top, divider, footer, bottom
+        overhead = 3 + len(foot)           # top, divider, footer(s), bottom
         room = max(1, caps.rows - overhead)
         if len(body) > room:
             body = body[:room]
 
         out: list[Text] = [
-            box_top(caps, w, self.title, self.status, heavy=heavy, color=colour),
+            box_top(caps, w, self.title, status, heavy=heavy, color=colour),
         ]
         for row in body:
             out.append(box_row(caps, w, row, heavy=heavy, color=colour))
@@ -196,9 +261,10 @@ class Screen:
         # first and then printing the hints underneath left the footer looking
         # detached, as though the screen had ended before it.
         out.append(box_sep(caps, w, heavy=heavy, color=colour))
-        f = Text().add(' ')
-        f.spans.extend(footer(caps, self._checked_hints(caps)).spans)
-        out.append(box_row(caps, w, f, heavy=heavy, color=colour))
+        for row in foot:
+            f = Text().add(' ')
+            f.spans.extend(row.spans)
+            out.append(box_row(caps, w, f, heavy=heavy, color=colour))
         out.append(box_bottom(caps, w, heavy=heavy, color=colour))
         return out
 

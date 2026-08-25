@@ -7,7 +7,9 @@ render identically unless something on the row says otherwise.
 
 from __future__ import annotations
 
-from ..model import ConduitBody, SalvageBody, StubBody, missing_needs
+from ..config import PROCTOR
+from ..model import (ConduitBody, LineageBody, SalvageBody, SittingBody,
+                     StubBody, missing_needs)
 from ..render import Caps, Text, line, wrap_rich
 from ..session import Session
 from . import ListScreen, Screen, push, selector
@@ -44,8 +46,14 @@ class TrackScreen(ListScreen):
                    'in your editor and run it.  ? for how.',
         'conduit': 'Each is a real network you must cross. Edit the tunnel '
                    'script and run it; crux probes the path.  ? for how.',
+        'lineage': 'Each is a collection of a domain and a principal you have '
+                   'to end up holding. Every right costs what using it would '
+                   'really cost.  ? for how.',
         'chain': 'One full engagement through all three tracks: find the way '
                  'in, land the exploit, reach the next host.  ? for how.',
+        'proctor': 'Each is a timed sitting over scenarios from the other '
+                   'tracks. More work than clock is the normal condition.  '
+                   'p for your pacing review, ? for how.',
     }
 
     def header_rows(self, caps: Caps) -> list[Text]:
@@ -105,6 +113,22 @@ class TrackScreen(ListScreen):
             out.append([t])
         return out
 
+    def extra_hints(self) -> list[tuple[str, str]]:
+        # The pacing review reads history rather than opening a scenario, so
+        # it cannot be a row: the cursor index has to keep meaning the
+        # scenario index. A key on the one track it belongs to is the smaller
+        # of the two compromises.
+        if self.track_name == PROCTOR:
+            return [('p', 'pacing')]
+        return []
+
+    def handle(self, key):
+        if (self.track_name == PROCTOR and key.name == 'p'
+                and not key.ctrl and not key.alt):
+            from .proctor import PacingScreen
+            return push(PacingScreen(self.session))
+        return super().handle(key)
+
     def activate(self, index: int) -> object:
         from .mark import MarkScreen
         from .salvage import SalvageScreen
@@ -114,6 +138,12 @@ class TrackScreen(ListScreen):
         if isinstance(s.body, ChainBody):
             from .chain import ChainIntroScreen
             return push(ChainIntroScreen(self.session, s))
+        if isinstance(s.body, SittingBody):
+            from .proctor import SittingIntroScreen
+            return push(SittingIntroScreen(self.session, s))
+        if isinstance(s.body, LineageBody):
+            from .lineage import WalkScreen
+            return push(WalkScreen(self.session, s))
         miss = missing_needs(s)
         if miss:
             return push(NeedsScreen(self.session, s, miss))

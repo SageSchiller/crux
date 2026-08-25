@@ -300,6 +300,105 @@ class ChainBody:
     debrief: str = ''
 
 
+@dataclass(frozen=True, slots=True)
+class LineageBody:
+    """A lineage scenario: a domain, what you hold, and what you want.
+
+    `graph` builds the collection from a seed (crux D10) the same way a `sift`
+    fixture builds a screen: the structure is authored because the structure is
+    the exercise, and the names, the ordering and the padding move.
+
+    `teaches` names the property the scenario exists to demonstrate, and
+    `validate.py` checks the graph actually has it rather than taking the
+    author's word:
+
+    * `cost` -- the cheapest route is **not** the one with fewest edges, which
+      is the track's central claim and the thing a collection tool gets wrong.
+    * `reach` -- there is a route that looks obvious and does not arrive, so
+      the exercise is telling a path from a cul-de-sac.
+    * `nesting` -- you already hold more than the collection appears to say,
+      through transitively nested groups.
+    * `quiet` -- the cheapest route writes nothing to the directory, while an
+      arriving alternative does. Cost and noise are not the same axis, and a
+      student who only ever optimises the number will eventually take a
+      cheaper route that leaves more behind it.
+
+    A claim in a docstring is a claim nobody rechecks. A claim in a field that
+    `validate.py` proves against the graph cannot rot.
+    """
+
+    brief: str
+    graph: object
+    objective_note: str = ''
+    teaches: str = ''
+    debrief: str = ''
+
+    def build(self, seed: int):
+        return self.graph.build(seed)
+
+    def canonical(self):
+        """The seed-0 collection. For authoring, `validate.py` and tests."""
+        return self.graph.canonical()
+
+
+@dataclass(frozen=True, slots=True)
+class Slot:
+    """One place in a sitting, and the pool it may be filled from.
+
+    A slot names a track and, optionally, the scenarios it is allowed to draw.
+    An empty pool means the whole track.
+
+    **Why a pool rather than a fixed scenario id.** A sitting is a pacing test,
+    not a knowledge test, but the two are not independent: a student who
+    already knows where the lead is will not overrun, so a fixed playlist
+    measures less on every replay. Drawing from a pool, preferring what has
+    never been attempted, keeps the clock honest for as long as there is
+    unseen content and degrades gracefully to least-recently-played after
+    that. It also means a sitting stays current as content grows instead of
+    quietly becoming a tour of the oldest scenarios in the repository.
+    """
+
+    track: str
+    pool: tuple[str, ...] = ()
+    label: str = ''
+
+    def __post_init__(self) -> None:
+        if self.track not in TRACKS:
+            raise ContentError(f'slot: {self.track!r} is not a skill track')
+
+
+@dataclass(frozen=True, slots=True)
+class SittingBody:
+    """A timed sitting: a budget, a target, and slots to spend the budget on.
+
+    `budget` is seconds for the whole sitting and `target` is the score out of
+    100 that counts as a pass. Neither is per-scenario: dividing the budget is
+    `pacing.allocations`' job, and how you actually divide it is the thing
+    being measured.
+
+    **The honesty note is part of the content, not decoration** (crux D14).
+    crux cannot make anyone sit twenty-four hours, and a forty-minute sitting
+    that called itself an exam would be the same class of lie as a simulated
+    verification. What a compressed sitting genuinely trains is the allocation
+    and the abandon decision; endurance is not on offer here and the intro
+    screen says so.
+    """
+
+    brief: str
+    budget: float
+    target: float
+    slots: tuple[Slot, ...]
+    debrief: str = ''
+
+    def __post_init__(self) -> None:
+        if self.budget <= 0:
+            raise ContentError('sitting: budget must be positive')
+        if not 0 < self.target <= 100:
+            raise ContentError('sitting: target must be a score out of 100')
+        if not self.slots:
+            raise ContentError('sitting: no slots')
+
+
 @dataclass
 class Track:
     """A track and the scenarios loaded into it."""

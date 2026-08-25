@@ -362,7 +362,7 @@ def wrap_rich(caps: Caps, s: str, width: int, indent: str, base: Color | None,
     **A terminal with no colour keeps the marks.** Styling is the whole way a
     code span is distinguished once the backticks are gone, so stripping them
     on a monochrome terminal would delete the distinction rather than render
-    it differently. That is the the capability ladder ladder applied to markup: the bottom rung
+    it differently. That is the capability ladder applied to markup: the bottom rung
     is the marks themselves, which is exactly how the text was authored.
     """
     if caps.color == ColorLevel.NONE:
@@ -417,33 +417,51 @@ def line(*args, **kwargs) -> Text:
 
 def box_top(caps: Caps, width: int, title: str = '', right: str = '',
             heavy: bool = False, color: Color | None = None) -> Text:
-    """Top border, optionally with a left title and a right-aligned label."""
+    """Top border, optionally with a left title and a right-aligned label.
+
+    **The border must close.** Everything else on this line gives way first,
+    because a box missing its own corner reads as a rendering fault rather
+    than as a long title, and it does so on exactly the screens that had the
+    most to say. The order things give way in is deliberate: the title goes
+    first, since it is already visible in the body underneath, and the right
+    label goes last, since it is the live half of the header. `proctor`'s
+    budget clock is what made that ordering matter: a long scenario title
+    plus a running clock tore the frame open on a leg that was being played.
+    """
     p = caps.palette
     color = color or p.border
     tl = caps.g('htl' if heavy else 'tl')
     tr = caps.g('htr' if heavy else 'tr')
     h = caps.g('hh' if heavy else 'h')
+    ell = caps.g('ellipsis')
+    ew = text_width(ell)
+
+    avail = max(0, width - text_width(tl) - text_width(tr))
+
+    def cost(t: str, r: str) -> int:
+        """Columns the labels and their separators take, filler aside."""
+        return (((1 + text_width(t) + 2) if t else 0)
+                + ((text_width(r) + 2 + 1) if r else 0))
+
+    def clip(s: str, room: int) -> str:
+        return (s[:room - ew] + ell) if room > ew else ''
+
+    if title and cost(title, right) > avail:
+        title = clip(title, avail - cost('', right) - 3)
+    if right and cost(title, right) > avail:
+        right = clip(right, avail - cost(title, '') - 3)
 
     t = Text().add(tl, color)
-    used = text_width(tl) + text_width(tr)
     if title:
-        label = f'{h} {title} '
         t.add(h, color).add(f' {title} ', p.accent, bold=True)
-        used += text_width(label)
+    fill = max(0, avail - cost(title, right))
+    t.add(h * fill, color)
     if right:
-        rlabel = f' {right} '
-        fill = max(0, width - used - text_width(rlabel) - 1)
-        t.add(h * fill, color)
-        t.add(rlabel, p.muted)
+        t.add(f' {right} ', p.muted)
         t.add(h, color)
-    else:
-        t.add(h * max(0, width - used), color)
     t.add(tr, color)
-    # A title plus right-label longer than the frame would otherwise push the
-    # border past `width`. Rows clip themselves in box_row; the border must
-    # hold the same line or the box tears open on exactly the screens whose
-    # titles are long enough to matter.
-    return t.truncate(width, caps.g('ellipsis'))
+    # Backstop for the degenerate case where even the corners do not fit.
+    return t.truncate(width, ell)
 
 
 def box_bottom(caps: Caps, width: int, heavy: bool = False,
@@ -529,6 +547,36 @@ def footer(caps: Caps, hints: list[tuple[str, str]], width: int | None = None) -
     if width:
         t.truncate(width)
     return t
+
+
+def footer_lines(caps: Caps, hints: list[tuple[str, str]],
+                 width: int) -> list[Text]:
+    """The key-hint footer, wrapped so nothing it promises falls off the edge.
+
+    Screen contract rule 4 says nothing needs a key you were never shown, and
+    a single-line footer keeps that promise only while the hints happen to
+    fit. They stopped fitting the moment `proctor` added an abandon key to a
+    marking screen that was already exactly at the frame width: the key was
+    advertised, clipped by the frame, and therefore not advertised at all.
+    Wrapping fixes the whole class rather than that one screen, and it costs
+    a row only on the screens that actually need one.
+    """
+    if not hints:
+        raise ValueError('every screen must declare at least one key hint')
+    p = caps.palette
+    out: list[Text] = []
+    cur = Text()
+    for key, label in hints:
+        piece = text_width(key) + 1 + text_width(label)
+        gap = 3 if cur.spans else 0
+        if cur.spans and cur.width() + gap + piece > width:
+            out.append(cur)
+            cur, gap = Text(), 0
+        if gap:
+            cur.add(' ' * gap)
+        cur.add(key, p.accent, bold=True).add(' ' + label, p.muted)
+    out.append(cur)
+    return out
 
 
 def render_lines(caps: Caps, lines: list[Text]) -> str:

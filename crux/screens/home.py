@@ -8,7 +8,8 @@ of crux D6: never let the student guess which parts are real.
 
 from __future__ import annotations
 
-from ..config import APP_TITLE, CHAIN, SECTIONS, TAGLINE_PARTS, TRACKS
+from ..config import (APP_TITLE, CHAIN, COMPOSITE, PROCTOR, TAGLINE_PARTS,
+                      TRACKS)
 from ..render import Caps, Text, line
 from ..session import Session
 from . import ListScreen, Screen, push, selector
@@ -28,15 +29,25 @@ class HomeScreen(ListScreen):
         n = len(self.session.state.attempts)
         return f'{n} attempt{"" if n == 1 else "s"}' if n else ''
 
-    def count(self) -> int:
-        # The three skill tracks, plus chain when it has content.
-        return len(TRACKS) + (1 if self._chain_ready() else 0)
+    def _names(self) -> list[str]:
+        """The rows, in order: every skill track, then every composite that
+        has content.
 
-    def _chain_ready(self) -> bool:
-        return bool(self.session.registry.track(CHAIN).scenarios)
+        Built in one place rather than derived from `SECTIONS` by index,
+        because a composite with no scenarios is not shown and an index into
+        `SECTIONS` then names the wrong track. That was survivable while
+        `chain` was the only composite; with two of them it is a bug waiting
+        for the first empty one.
+        """
+        return list(TRACKS) + [n for n in COMPOSITE
+                               if self.session.registry.track(n).scenarios]
+
+    def count(self) -> int:
+        return len(self._names())
 
     def _row_track(self, index: int) -> str:
-        return SECTIONS[index] if index < len(SECTIONS) else CHAIN
+        names = self._names()
+        return names[index] if index < len(names) else names[-1]
 
     def header_rows(self, caps: Caps) -> list[Text]:
         p = caps.palette
@@ -55,13 +66,13 @@ class HomeScreen(ListScreen):
     def blocks(self, caps: Caps) -> list[list[Text]]:
         p = caps.palette
         out: list[list[Text]] = []
-        names = list(TRACKS) + ([CHAIN] if self._chain_ready() else [])
-        for i, name in enumerate(names):
+        for i, name in enumerate(self._names()):
             track = self.session.registry.track(name)
             sel = i == self.cursor
             t = selector(caps, sel)
-            colour = p.accent2 if name == CHAIN else (p.accent if sel else p.fg)
-            t.add(f'{name:<9}', colour, bold=sel or name == CHAIN)
+            composite = name in COMPOSITE
+            colour = p.accent2 if composite else (p.accent if sel else p.fg)
+            t.add(f'{name:<9}', colour, bold=sel or composite)
             t.add(track.blurb, p.muted)
 
             done, mean = self.session.state.track_summary(name)
@@ -71,6 +82,10 @@ class HomeScreen(ListScreen):
                 d.add('the capstone: uses all three', p.dim)
                 if done:
                     d.add(f'   {done}/{total} run', p.dim)
+            elif name == PROCTOR:
+                d.add('timed: schedules what you have not played', p.dim)
+                if done:
+                    d.add(f'   {done}/{total} sat', p.dim)
             elif not track.ready:
                 d.add('engine not built yet', p.warn)
             elif done:

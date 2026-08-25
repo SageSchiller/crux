@@ -31,6 +31,7 @@ from crux.loader import load                                  # noqa: E402
 from crux.model import (ChainBody, ConduitBody, ContentError,  # noqa: E402
                         Line, MarkBody, SalvageBody, Scenario,
                         Stage, roles)
+from crux import lineage as LN                                # noqa: E402
 from crux.scoring import DECOY_WEIGHT, band, score_marks      # noqa: E402
 from crux.screens import Screen                               # noqa: E402
 from crux.screens.help import HelpScreen                      # noqa: E402
@@ -242,15 +243,23 @@ def test_loader() -> None:
     ok(len(chains) >= 2, f'{len(chains)} chain engagements')
     # The two engagements must not be the same box twice: the exam is half
     # Linux and half domain, so the capstone has to cover both shapes.
+    from crux.config import TRACKS as _TRACKS
     from crux.model import ChainBody as _CB
     kinds = set()
     for c in chains:
         if isinstance(c.body, _CB):
-            kinds.add(tuple(type(st.body).__name__ for st in c.body.stages))
-    ok(all(len(k) == 3 for k in kinds), 'every engagement is three stages')
+            kinds.add(tuple(st.track for st in c.body.stages))
+            # A chain is a prefix of the engagement order, three or four legs.
+            tracks = tuple(st.track for st in c.body.stages)
+            ok(3 <= len(tracks) <= 4,
+               f'{c.id}: an engagement is three or four stages')
+            ok(all(t in _TRACKS for t in tracks),
+               f'{c.id}: every stage is a skill track')
     ids = {c.id for c in chains}
     ok('chain-wexler' in ids and 'chain-northwind' in ids,
        'both the single-host and the domain engagements are present')
+    ok('chain-aldwych' in ids,
+       'and the four-stage engagement that ends on a graph walk')
     ok(len(reg.track('sift').scenarios) >= 9, 'sift has real breadth')
     ok(reg.by_id('sift-smoke-nmap') is None,
        'Phase 0 scaffolding was deleted, not left beside real content')
@@ -339,6 +348,8 @@ def _screens(session):
     from crux.screens.stub import StubScreen
     from crux.screens.track import TrackScreen
     from crux.screens.home import ErrorScreen
+    from crux.screens.lineage import MapScreen, WalkResultScreen, WalkScreen
+    from crux.screens.proctor import PacingScreen, SittingIntroScreen
 
     sift = session.registry.by_id('sift-nmap-pinned')
     wide = session.registry.by_id('sift-nmap-dc')
@@ -351,6 +362,7 @@ def _screens(session):
                     body=StubBody(prompt='a future track lands here',
                                   phase='Phase 8', debrief='not yet'))
     mark = MarkScreen(session, sift, seed=0)
+    walk = WalkScreen(session, session.registry.by_id('lineage-reset'), seed=0)
     lead = sorted(mark.leads)[0]
     watch = Stopwatch(session.clock)
     score = score_marks(mark.leads, mark.decoys, {lead},
@@ -366,7 +378,17 @@ def _screens(session):
                      chose=sift.body.actions[0]),
         StubScreen(session, stub),
         HelpScreen(),
+        HelpScreen('lineage'),
         ErrorScreen(session),
+        TrackScreen(session, 'lineage'),
+        TrackScreen(session, 'proctor'),
+        walk,
+        MapScreen(walk),
+        WalkResultScreen(walk, LN.score_walk(
+            walk.built, list(walk.best.priced), True, walk.best.cost,
+            walk.budget, elapsed=94.0)),
+        SittingIntroScreen(session, session.registry.by_id('proctor-short')),
+        PacingScreen(session),
     ]
 
 
@@ -387,6 +409,28 @@ def test_screens_render() -> None:
                     plain = ''.join(r.plain() for r in rows)
                     ok(plain.isascii(),
                        f'{name}: non-ASCII leaked into the ASCII rung')
+                # Screen contract rule 4, asserted against the *frame* rather
+                # than against the hint list. A hint that exists and is then
+                # clipped off the edge by the frame has advertised nothing,
+                # which is precisely what happened the first time a sitting
+                # added its abandon key to an already-full marking footer.
+                # Only checked where the frame is at least the documented
+                # minimum: below that the height backstop is allowed to eat
+                # rows, and it is allowed to eat these.
+                # The frame must close. A header whose title and right-hand
+                # label together ran past the width used to lose its own
+                # corner to the backstop truncation, which reads as a torn
+                # box on precisely the screens with the most to say.
+                ok(rows[0].plain().endswith(caps.g('tr')),
+                   f'{name}: the top border lost its corner')
+                ok(rows[-1].plain().endswith(caps.g('br')),
+                   f'{name}: the bottom border lost its corner')
+                if size[0] >= MIN_COLS and size[1] >= MIN_ROWS:
+                    painted = '\n'.join(r.plain() for r in rows)
+                    for key, label in scr.hints(caps):
+                        ok(f'{key} {label}' in painted,
+                           f'{name}: the footer promises {key!r} and the '
+                           f'frame clipped it')
 
 
 def test_every_scenario_renders() -> None:
@@ -1016,22 +1060,36 @@ def test_list_windowing() -> None:
                f'{type(scr).__name__} @80x{rows}: Home keeps the selector shown')
 
 
-def test_home_shows_chain() -> None:
-    """The picker sets the capstone apart from the three skill tracks."""
+def test_home_shows_composites() -> None:
+    """The picker lists the skill tracks, then every composite with content.
+
+    Asserted by name rather than by row number. The picker used to index into
+    `SECTIONS`, which is correct only while every composite has content: an
+    empty one is not shown, and from that point every index below it names the
+    wrong track. Pinning the *names* is what makes that class of bug fail here
+    rather than in somebody's hands.
+    """
+    from crux.config import COMPOSITE
     from crux.screens.home import HomeScreen
     session = Session.open(clock=FakeClock(), read_only=True)
     home = HomeScreen(session)
     caps = all_caps()[0]
-    eq(home.count(), 4, 'three tracks and the chain capstone')
+
+    live = [n for n in COMPOSITE if session.registry.track(n).scenarios]
+    eq(home.count(), len(TRACKS) + len(live),
+       'the skill tracks plus every composite that has content')
+    eq(home._names(), list(TRACKS) + live, 'in that order')
+
     shown = ''.join(r.plain() for r in home.render(caps))
     ok('chain' in shown, 'chain is on the picker')
     ok('capstone' in shown, 'and marked as the capstone')
-    # Selecting the fourth row opens the chain track.
-    from crux.screens.track import TrackScreen
-    home.cursor = 3
-    opened = home.activate(3)
-    eq(type(opened.screen).__name__, 'TrackScreen', 'and it opens')
-    eq(opened.screen.track_name, 'chain', 'to the chain section')
+    ok('proctor' in shown, 'proctor is on the picker')
+    ok('timed' in shown, 'and marked as the timed one')
+
+    for i, name in enumerate(home._names()):
+        opened = home.activate(i)
+        eq(type(opened.screen).__name__, 'TrackScreen', f'row {i} opens')
+        eq(opened.screen.track_name, name, f'row {i} opens {name}')
 
 
 def test_conduit_engine() -> None:
@@ -1500,6 +1558,900 @@ def test_panning() -> None:
        'a resize to a wider terminal re-clamps the pan')
 
 
+# --------------------------------------------------------------------------
+# proctor
+# --------------------------------------------------------------------------
+
+def test_pacing_arithmetic() -> None:
+    """The numbers `proctor` reports, checked without a screen in the way.
+
+    Every claim the post-mortem makes is arithmetic, and arithmetic that is
+    only ever seen through a rendered screen is arithmetic nobody has checked.
+    """
+    from crux import pacing
+
+    a = pacing.allocations(('sift', 'salvage', 'conduit'), 2100.0)
+    eq([round(x) for x in a], [300, 900, 900],
+       'the budget splits by track weight')
+    eq(round(sum(pacing.allocations(('sift',) * 7, 1000.0))), 1000,
+       'the shares always sum back to the budget')
+    eq(pacing.allocations((), 600.0), (), 'no slots, no shares')
+
+    landed = pacing.Leg('a', 'sift', 'A', 300.0, 120.0, 100.0, reached=True)
+    over = pacing.Leg('b', 'salvage', 'B', 600.0, 900.0, 0.0, reached=True)
+    early = pacing.Leg('c', 'sift', 'C', 300.0, 60.0, 0.0, reached=True,
+                       abandoned=True)
+    late = pacing.Leg('d', 'sift', 'D', 300.0, 500.0, 0.0, reached=True,
+                      abandoned=True)
+    never = pacing.Leg('e', 'conduit', 'E', 600.0)
+
+    eq(landed.overrun, 0.0, 'a leg inside its share has no overrun')
+    eq(landed.sunk, 0.0, 'and nothing sunk')
+    eq(over.overrun, 300.0, 'overrun is time past the share')
+    eq(over.sunk, 300.0, 'and it is sunk when the leg scored nothing')
+    eq(early.sunk, 0.0,
+       'walking away inside the share sinks nothing, with no special case')
+    eq(late.sunk, 200.0, 'walking away late still sinks what it cost')
+    eq(never.overrun, 0.0, 'a leg you never reached cost no clock')
+    eq(never.sunk, 0.0, 'and sank none')
+    eq(landed.verdict, 'landed', 'verdicts read as English')
+    eq(over.verdict, 'nothing for it', '...')
+    eq(early.verdict, 'walked away', '...')
+    eq(never.verdict, 'never reached', '...')
+
+    paid_over = pacing.Leg('f', 'salvage', 'F', 600.0, 900.0, 100.0,
+                           reached=True)
+    eq(paid_over.overrun, 300.0, 'a leg that overran and landed still overran')
+    eq(paid_over.sunk, 0.0,
+       'but it bought something, so none of it is sunk (the crux D8 habit: '
+       'only charge for what actually cost you)')
+
+    r = pacing.review([landed, over, never], 1500.0, 70.0, spent=1100.0)
+    eq(round(r.score, 1), 33.3, 'the score averages over every slot, reached '
+                                'or not')
+    ok(not r.passed, 'and it is short of the target')
+    eq(r.spent, 1100.0, 'spent is the wall clock, not the sum of the legs')
+    eq(r.on_legs, 1020.0, 'the legs account for less than the sitting did')
+    eq(r.banked, 400.0, 'banked is what was left of the budget')
+    eq(r.overspent, 0.0, 'and nothing ran past it')
+    eq(r.sunk, 300.0, 'sunk rolls up across the legs')
+    eq(len(r.unreached), 1, 'one leg was never reached')
+    eq(len(r.landed), 1, 'one leg paid')
+    eq(len(r.dry), 1, 'one was ridden to the end for nothing')
+
+    over_budget = pacing.review([over], 600.0, 50.0, spent=900.0)
+    eq(over_budget.overspent, 300.0, 'a sitting can end past its budget')
+    eq(over_budget.banked, 0.0, 'and then nothing is banked')
+
+    clean = pacing.review(
+        [pacing.Leg('a', 'sift', 'A', 300.0, 100.0, 100.0, reached=True),
+         pacing.Leg('b', 'sift', 'B', 300.0, 100.0, 100.0, reached=True)],
+        600.0, 70.0, spent=200.0)
+    ok(clean.passed, 'landing everything passes')
+    ok('Cleared' in clean.headline(), 'and the headline says so')
+    eq(clean.sunk, 0.0, 'with nothing sunk')
+    eq(clean.notes(), ('Nothing to correct: every leg came in on its share.',),
+       'a clean sitting gets one note and not a lecture')
+
+    eq(len(r.sank), 1, 'one leg actually sank time')
+    sank_and_walked = pacing.review([landed, late], 1500.0, 70.0, spent=620.0)
+    eq(len(sank_and_walked.dry), 0,
+       'a leg you walked away from was not ridden to the end')
+    eq(len(sank_and_walked.sank), 1,
+       'but it still sank the time it spent past its share, so the two '
+       'populations are not the same set')
+    ok('on 1 leg that scored zero' in ' '.join(sank_and_walked.notes()),
+       'and the note counts the legs that sank, not the ones that were '
+       'ridden out; counting the wrong set printed "14m 40s ... on 0 legs"')
+
+    notes = ' '.join(r.notes())
+    ok('past your own allocation' in notes, 'the sunk note is the first one')
+    ok('abandoned nothing' in notes,
+       'and riding a dead leg to the end is named')
+    ok('Never reached' in notes, 'as are the legs the clock ate')
+
+    walked = pacing.review([landed, early, never], 1500.0, 70.0, spent=500.0)
+    ok(any('inside its' in n for n in walked.notes()),
+       'an early walk-away is credited, not scolded')
+    walked_late = pacing.review([landed, late, never], 1500.0, 70.0, spent=900.0)
+    ok(any('came late' in n for n in walked_late.notes()),
+       'a late one is credited and dated')
+
+    eq(pacing.family('sift-nmap-pinned'), 'nmap', 'family reads the id')
+    eq(pacing.family('proctor-short'), 'proctor-short',
+       'an id with no family segment is its own family')
+
+
+def test_pacing_history() -> None:
+    """The standalone review folds every attempt, and never double-counts."""
+    from crux import pacing
+
+    rows = [
+        Attempt('sift-a', 'sift', when=1.0, elapsed=100.0, total=90.0,
+                marks=90.0, recall=1.0, precision=1.0, tier='graded'),
+        Attempt('sift-b', 'sift', when=2.0, elapsed=300.0, total=0.0,
+                marks=0.0, recall=0.0, precision=0.0, tier='graded'),
+        Attempt('salvage-a', 'salvage', when=3.0, elapsed=600.0, total=0.0,
+                marks=0.0, recall=0.0, precision=0.0, tier='verified',
+                runs=3, read_first=False),
+        Attempt('proctor-short', 'proctor', when=4.0, elapsed=1000.0,
+                total=45.0, marks=45.0, recall=0.5, precision=0.8,
+                tier='graded', sitting='proctor-short'),
+    ]
+    h = pacing.history(rows)
+    eq(h.attempts, 3, 'the sitting summary is not one of the attempts')
+    eq(h.total_time, 1000.0,
+       'and its elapsed time is not added to the legs it contains')
+    eq(h.zero_time, 900.0, 'time that bought nothing is summed')
+    eq(round(h.zero_share, 2), 0.9, 'and expressed as a share')
+    eq(h.sittings, 1, 'the sitting is counted as a sitting')
+    eq(h.ran_unread, 1, 'running an unread proof-of-concept is counted')
+    eq(h.longest.scenario, 'salvage-a', 'the longest single attempt is named')
+
+    by = {t.track: t for t in h.tracks}
+    eq(by['sift'].attempts, 2, 'per-track counts')
+    eq(by['sift'].median, 200.0, 'per-track medians')
+    eq(by['sift'].completed, 2, 'and how many of them were played out')
+    eq(by['sift'].zeros, 1, 'per-track zero counts')
+    eq(by['conduit'].attempts, 0, 'a track with no play is still listed')
+    ok(by['sift'].thin, 'two attempts is below the sample floor')
+
+    # An attempt you walked away from is time you spent, but it is not
+    # evidence about how long the work takes, so it counts in one column and
+    # not the other.
+    walked = pacing.history(rows + [
+        Attempt('sift-c', 'sift', when=5.0, elapsed=20.0, total=0.0,
+                marks=0.0, recall=0.0, precision=0.0, tier='graded',
+                sitting='proctor-short', abandoned=True)])
+    w = {t.track: t for t in walked.tracks}['sift']
+    eq(w.attempts, 3, 'a walk-away is an attempt')
+    eq(w.completed, 2, 'but not a completed one')
+    eq(w.median, 200.0,
+       'so it does not drag the median of how long the work takes')
+    eq(w.on_task, 420.0, 'while the time it cost is still counted')
+    eq(walked.abandons, 1, 'and it is counted as a walk-away')
+
+    empty = pacing.history([])
+    ok(not empty.any, 'an empty history knows it is empty')
+    ok('Nothing recorded yet' in empty.notes()[0], 'and says so once')
+
+
+def test_sitting_fill() -> None:
+    """Slot selection: unseen first, then spread, then least recently played."""
+    from crux import pacing
+    from crux.model import SittingBody, Slot
+
+    reg = load()
+    sit = reg.by_id('proctor-standard')
+    ok(isinstance(sit.body, SittingBody), 'a sitting carries a SittingBody')
+
+    fresh = State()
+    picks = pacing.fill(sit.body.slots, reg, fresh)
+    eq([p.track for p in picks], [s.track for s in sit.body.slots],
+       'every slot draws from its own track')
+    eq(len(set(p.id for p in picks)), len(picks),
+       'and no scenario fills two slots')
+    eq(pacing.fill(sit.body.slots, reg, fresh), picks,
+       'selection is deterministic given a history')
+
+    sifts = [pacing.family(p.id) for p in picks if p.track == 'sift']
+    eq(len(set(sifts)), len(sifts),
+       'the sift legs come from different families rather than three of the '
+       'same')
+
+    # Playing what it would have picked moves the selection on.
+    played = State()
+    played.record(Attempt(picks[0].id, picks[0].track, when=10.0, elapsed=60.0,
+                          total=100.0, marks=100.0, recall=1.0, precision=1.0,
+                          tier='graded'))
+    moved = pacing.fill(sit.body.slots, reg, played)
+    ok(moved[0].id != picks[0].id, 'a scenario you have played is not first')
+
+    # With everything played, oldest wins and the slots still fill.
+    everything = State()
+    for i, sc in enumerate(reg.scenarios):
+        everything.record(Attempt(sc.id, sc.track, when=5000.0 - i,
+                                  elapsed=60.0, total=50.0, marks=50.0,
+                                  recall=0.5, precision=0.5, tier=sc.tier))
+    full = pacing.fill(sit.body.slots, reg, everything)
+    ok(all(p is not None for p in full),
+       'every slot still fills when nothing is unseen')
+    oldest = min((s for s in reg.track('sift').scenarios),
+                 key=lambda s: everything.last_when(s.id))
+    eq(full[0].id, oldest.id, 'and the least recently played one comes first')
+
+    # A tool you do not have is skipped rather than handed to you.
+    gated = [s for s in reg.track('conduit').scenarios
+             if s.needs and 'chisel' in s.needs]
+    if gated:
+        only_gated = (Slot(track='conduit', pool=(gated[0].id,)),)
+        eq(pacing.fill(only_gated, reg, State()), (None,),
+           'a slot that can only draw an uninstallable scenario yields None '
+           'rather than an unplayable leg')
+
+
+def test_sitting_flow() -> None:
+    """Drive a whole sitting: play a leg, walk away from one, run past the
+    budget, and land on the post-mortem.
+
+    The one flow that exercises everything this track added: the shared clock,
+    the abandon verb wired through the base screen, the per-leg recording, the
+    budget deciding when the sitting ends, and the pacer being released after.
+    """
+    import crux.screens as SCR
+    from crux.model import SittingBody
+    from crux.screens.proctor import (BetweenScreen, SittingIntroScreen,
+                                      SittingResultScreen)
+
+    clock = FakeClock()
+    session = Session.open(clock=clock, read_only=True)
+    sc = session.registry.by_id('proctor-short')
+    ok(isinstance(sc.body, SittingBody), 'proctor-short is a sitting')
+    caps = all_caps()[0]
+
+    intro = SittingIntroScreen(session, sc)
+    ok(bool(intro.render(caps)), 'the intro renders')
+    shown = ''.join(r.plain() for r in intro.render(caps))
+    ok('compressed' in shown,
+       'and says on its face that this is not a 24-hour exam (crux D14)')
+    ok(not intro.unfillable, 'every leg has a scenario')
+    ok(SCR.PACER is None, 'no clock is running before you press enter')
+
+    leg1 = intro.handle(K.parse('RET')).screen
+    eq(type(leg1).__name__, 'MarkScreen', 'enter opens the first leg')
+    ok(SCR.PACER is not None, 'and starts the clock')
+    sitting = SCR.PACER
+    eq(len(sitting.picks), 3, 'three legs')
+    eq([round(a) for a in sitting.allocs], [180, 180, 540],
+       'shares split by track weight')
+
+    header = ''.join(r.plain() for r in leg1.render(caps))
+    ok('left' in header, 'the remaining budget is on screen while you play')
+    footer = header
+    ok('abandon' in footer,
+       'and the footer advertises the key that walks away (contract rule 4)')
+
+    # Leg 1, played correctly, well inside its share.
+    clock.advance(100.0)
+    lead = next(i for i, l in enumerate(leg1.lines) if l.kind == 'lead')
+    for _ in range(lead):
+        leg1.handle(K.parse('Down'))
+    leg1.handle(K.parse('SPC'))
+    nxt = leg1.handle(K.parse('RET')).screen
+    if type(nxt).__name__ == 'ActScreen':
+        correct = next(i for i, a in enumerate(nxt.body_data.actions)
+                       if a.correct)
+        for _ in range(correct):
+            nxt.handle(K.parse('Down'))
+        nxt = nxt.handle(K.parse('RET')).screen
+    ok(isinstance(nxt, BetweenScreen), 'a finished leg goes to the between screen')
+    ok(bool(nxt.render(caps)), 'which renders')
+    eq(len(session.state.attempts), 1,
+       'and the leg was recorded as an attempt of its own')
+    first = session.state.attempts[0]
+    eq(first.sitting, sc.id, 'tagged with the sitting it was played inside')
+    eq(first.track, sitting.picks[0].track, 'against its own track')
+    eq(first.elapsed, 100.0, 'with the time the sitting clock says it took')
+    ok(not first.abandoned, 'and not marked as walked away from')
+    ok(first.total > 0, 'a leg played correctly scores')
+    ok(len(first.marked) >= 1,
+       'the marks are recovered through the on_done seam and stored')
+
+    # Leg 2, abandoned early with the key rather than by calling the method.
+    leg2 = nxt.handle(K.parse('RET')).screen
+    eq(type(leg2).__name__, 'MarkScreen', 'the between screen opens the next leg')
+    ok(SCR.PACER.owns(leg2), 'the pacer owns the leg being played')
+    clock.advance(30.0)
+    after = leg2.handle(K.parse('X'))
+    ok(isinstance(after.screen, BetweenScreen), 'X walks away and moves on')
+    eq(len(session.state.attempts), 2, 'and the walk-away is recorded')
+    second = session.state.attempts[1]
+    ok(second.abandoned, 'marked as abandoned')
+    eq(second.total, 0.0, 'scoring nothing')
+    eq(second.elapsed, 30.0, 'and costing only the time it took to decide')
+
+    # Leg 3 runs long enough to push the sitting past its budget.
+    leg3 = after.screen.handle(K.parse('RET')).screen
+    eq(type(leg3).__name__, 'SalvageScreen', 'the last leg is the salvage one')
+    clock.advance(800.0)
+    ok('budget gone' in SCR.PACER.banner(),
+       'the header says so once the budget is spent')
+    result = leg3.handle(K.parse('X')).screen
+    ok(isinstance(result, SittingResultScreen),
+       'the last leg ends the sitting rather than looking for a fourth')
+    ok(SCR.PACER is None, 'and the pacer is released')
+
+    r = result.review
+    eq(len(r.legs), 3, 'every slot appears in the review')
+    eq(r.spent, 930.0, 'spent is the sitting clock')
+    eq(r.overspent, 30.0, 'which ran past the budget')
+    eq(r.banked, 0.0, 'so nothing was banked')
+    eq(r.sunk, 260.0,
+       'the late walk-away sank the time it spent past its share, and the '
+       'early one sank nothing')
+    eq(round(r.score, 1), round(session.state.attempts[0].total / 3, 1),
+       'the sitting scores the mean over all three legs')
+    ok(not r.passed, 'one leg of three does not clear 60')
+
+    eq(len(session.state.attempts), 4,
+       'three legs and the sitting itself are recorded')
+    summary = session.state.attempts[-1]
+    eq(summary.track, 'proctor', 'the summary row belongs to proctor')
+    eq(summary.scenario, sc.id, 'and names the sitting')
+    eq(summary.elapsed, 930.0, 'carrying the whole sitting clock')
+    ok(0.0 <= summary.precision <= 1.0,
+       'precision is the share of the clock that bought something')
+
+    text = ''.join(row.plain() for row in result.render(caps))
+    for want in ('sunk', 'unspent', 'What that means'):
+        ok(want in text, f'the post-mortem shows {want!r}')
+    ok('walked away' in text, 'and names the legs you walked away from')
+
+
+def test_pacer_release() -> None:
+    """Every route out of a sitting puts the clock down.
+
+    A pacer left set paints a dead clock onto the home screen and offers an
+    abandon key with nothing to abandon. There are four ways out and all four
+    are checked, because the one that gets missed is always the one nobody
+    thought of.
+    """
+    import crux.screens as SCR
+    from crux.screens.proctor import SittingIntroScreen
+
+    def open_sitting():
+        session = Session.open(clock=FakeClock(), read_only=True)
+        sc = session.registry.by_id('proctor-short')
+        return SittingIntroScreen(session, sc).handle(K.parse('RET')).screen
+
+    for key, what in (('H', 'home'), ('q', 'quit'), ('ESC', 'back')):
+        leg = open_sitting()
+        ok(SCR.PACER is not None, f'a sitting is running before {what}')
+        leg.handle(K.parse(key))
+        ok(SCR.PACER is None, f'{what} releases the pacer')
+
+    # Esc out of a screen the sitting does not own leaves it running: help is
+    # not a leg, and closing help should not end the exam.
+    leg = open_sitting()
+    help_screen = HelpScreen('proctor')
+    ok(not SCR.PACER.owns(help_screen), 'the pacer does not own a help page')
+    help_screen.handle(K.parse('ESC'))
+    ok(SCR.PACER is not None, 'so Esc out of help does not end the sitting')
+    caps = all_caps()[0]
+    shown = ''.join(r.plain() for r in help_screen.render(caps))
+    ok('abandon' not in shown,
+       'and a screen the pacer does not own never offers the abandon key')
+    ok('left' in shown, 'though the clock is still shown, because it is still '
+                        'running')
+    leg.handle(K.parse('q'))
+    ok(SCR.PACER is None, 'cleaned up')
+
+
+def test_pacing_screen() -> None:
+    """The standalone review renders empty and populated."""
+    from crux.screens.proctor import PacingScreen
+
+    caps = all_caps()[0]
+    session = Session.open(clock=FakeClock(), read_only=True)
+    session.state = State()
+    empty = PacingScreen(session)
+    text = ''.join(r.plain() for r in empty.render(caps))
+    ok('Nothing recorded yet' in text, 'an empty history says so')
+    ok(bool(empty.hints(caps)), 'and still names its exits')
+
+    session.state.record(Attempt('sift-a', 'sift', when=1.0, elapsed=200.0,
+                                 total=0.0, marks=0.0, recall=0.0,
+                                 precision=0.0, tier='graded'))
+    session.state.record(Attempt('salvage-a', 'salvage', when=2.0,
+                                 elapsed=400.0, total=100.0, marks=100.0,
+                                 recall=1.0, precision=1.0, tier='verified',
+                                 runs=2, read_first=False))
+    full = PacingScreen(session)
+    text = ''.join(r.plain() for r in full.render(caps))
+    for want in ('on task', 'median', 'zeros', 'What that means'):
+        ok(want in text, f'the review shows {want!r}')
+    ok('without opening it' in text,
+       'and names the read-it-before-you-run-it count when there is one')
+
+    # Every rung of the capability ladder, since this screen is a table.
+    for c in all_caps():
+        for row in full.render(c):
+            ok(R.text_width(row.plain()) <= c.cols,
+               'the pacing table never overflows its frame')
+
+
+# --------------------------------------------------------------------------
+# lineage
+# --------------------------------------------------------------------------
+
+def _probe_graph():
+    """A hand-built domain small enough to reason about in the assertions.
+
+    Two routes to the same account: three edges through a password reset, or
+    four through a workstation. The cheap one is the long one, which is the
+    whole claim the track makes.
+    """
+    from crux.targets._graph import Domain, Node, Right
+    return Domain(
+        nodes=(Node('you', 'user'),
+               Node('desk', 'group', name='HELPDESK'),
+               Node('it', 'group', name='IT'),
+               Node('wk', 'computer'),
+               Node('adm', 'user'),
+               Node('da', 'group', name='DOMAIN ADMINS'),
+               Node('dead', 'computer')),
+        edges=(Right('you', 'desk', 'MemberOf'),
+               Right('you', 'it', 'MemberOf'),
+               Right('desk', 'adm', 'ForceChangePassword', why='loud'),
+               Right('it', 'wk', 'AdminTo', why='quiet'),
+               Right('wk', 'adm', 'HasSession', why='quiet'),
+               Right('adm', 'da', 'MemberOf'),
+               Right('it', 'dead', 'CanRDP', why='nothing there')),
+        owned=('you',), objective='da', filler=(0, 0))
+
+
+def test_lineage_arithmetic() -> None:
+    """Costs, closure and the two searches, with no screen in the way."""
+    built = _probe_graph().build(0)
+
+    have = LN.closure(built.owned, built.edges)
+    eq(have, frozenset({'you', 'desk', 'it'}),
+       'owning an account owns every group it nests into, free and automatic')
+    eq(LN.closure({'adm'}, built.edges), frozenset({'adm', 'da'}),
+       'and the closure is transitive rather than one level deep')
+
+    cheap = LN.cheapest(built)
+    hops = LN.shortest(built)
+    eq(cheap.cost, 3, 'the cheapest route costs the workstation and the session')
+    eq(cheap.hops, 4, 'and takes four edges to do it')
+    eq(hops.hops, 3, 'the fewest-edges route is one edge shorter')
+    eq(hops.cost, 4, 'and costs more, which is the entire claim of the track')
+    ok(all(e.kind in LN.EDGE_COST for e in built.edges),
+       'every right in a built graph has a price')
+    eq(LN.cost_of('MemberOf'), 0, 'a membership is a state, not an action')
+    ok(LN.cost_of('ForceChangePassword') > LN.cost_of('HasSession'),
+       'resetting a real password costs more than stealing a session')
+
+    moves = LN.available(built, built.owned)
+    eq([e.kind for e in moves],
+       sorted([e.kind for e in moves], key=lambda k: LN.cost_of(k)),
+       'moves are offered cheapest first')
+    ok(all(e.kind not in LN.FREE for e in moves),
+       'a membership is never offered as a move')
+    ok(all(e.dst not in LN.closure(built.owned, built.edges) for e in moves),
+       'nor is a right into something you already hold')
+
+    eq(LN.budget_for(3), 6, 'the budget is twice the cheapest route')
+    eq(LN.budget_for(1), 3, 'with a floor, so a short graph is not brutal')
+
+    # An unreachable objective is answered, not raised.
+    from crux.targets._graph import Domain, Node, Right
+    stranded = Domain(nodes=(Node('you', 'user'), Node('da', 'group', name='DA')),
+                      edges=(), owned=('you',), objective='da',
+                      filler=(0, 0)).build(0)
+    ok(not LN.cheapest(stranded).reachable,
+       'a domain with no route says so rather than raising')
+
+
+def test_lineage_scoring() -> None:
+    """What a walk is worth, and what it is not worth."""
+    built = _probe_graph().build(0)
+    cheap = LN.cheapest(built)
+    budget = LN.budget_for(cheap.cost)
+
+    best = LN.score_walk(built, list(cheap.priced), True, cheap.cost, budget)
+    eq(best.total, 100.0, 'the cheapest route scores full marks')
+    eq(best.overspend, 0, 'and overspends nothing')
+    ok('cheapest route' in best.summary(), 'and says so')
+
+    reset = [e for e in built.edges if e.kind == 'ForceChangePassword']
+    pricey = LN.score_walk(built, reset, True, cheap.cost, budget)
+    eq(pricey.spent, 4, 'the reset route costs four')
+    eq(pricey.total, 75.0,
+       'arriving the expensive way still arrives, and scores less')
+
+    stalled = LN.score_walk(built, [], False, cheap.cost, budget)
+    eq(stalled.total, 0.0, 'not arriving is worth nothing')
+    eq(stalled.left, 3,
+       'and how close you got is reported instead of folded into the score, '
+       'the same way a salvage script that meets three of four conditions is')
+
+    dead = [e for e in built.edges if e.kind == 'CanRDP']
+    wasted = LN.score_walk(built, dead + list(cheap.priced), True,
+                           cheap.cost, budget)
+    eq(len(wasted.dead_ends), 1, 'a branch with nothing leading out is named')
+    eq(wasted.dead_ends[0].kind, 'CanRDP', 'and it is the right one')
+    eq(wasted.spent, 4, 'and it was paid for')
+    ok(wasted.total < 100.0, 'so the walk scores less than the clean one')
+
+
+def test_lineage_content() -> None:
+    """Every authored collection: solvable, stable, and teaching its claim."""
+    from crux.model import LineageBody
+
+    session = Session.open(clock=FakeClock(), read_only=True)
+    scenarios = session.registry.track('lineage').scenarios
+    ok(bool(scenarios), 'the lineage track has content')
+
+    for sc in scenarios:
+        ok(isinstance(sc.body, LineageBody), f'{sc.id}: carries a LineageBody')
+        eq(sc.tier, 'graded', f'{sc.id}: graded, because crux computes the key')
+
+        keys = set()
+        for seed in (0, 1, 7, 991, 20260824):
+            built = sc.body.build(seed)
+            best = LN.cheapest(built)
+            ok(best.reachable, f'{sc.id}: reachable at seed {seed}')
+            ok(best.cost > 0, f'{sc.id}: not free at seed {seed}')
+            ok(built.objective not in LN.closure(built.owned, built.edges),
+               f'{sc.id}: you do not start holding it at seed {seed}')
+            keys.add(tuple(sorted(e.id for e in best.edges)))
+            names = {n.name for n in built.nodes}
+            eq(len(names), len(built.nodes),
+               f'{sc.id}: no two principals share a display name at seed {seed}')
+        eq(len(keys), 1,
+           f'{sc.id}: the cheapest route is the same rights at every seed')
+
+        built = sc.body.canonical()
+        best = LN.cheapest(built)
+        if sc.body.teaches == 'cost':
+            ok(LN.shortest(built).cost > best.cost,
+               f'{sc.id}: claims to teach cost, so the short route must cost '
+               f'more')
+        elif sc.body.teaches == 'nesting':
+            extra = len(LN.closure(built.owned, built.edges)) - len(built.owned)
+            ok(extra >= 2,
+               f'{sc.id}: claims to teach nesting, so you must start holding '
+               f'more than you were handed')
+        elif sc.body.teaches == 'quiet':
+            ok(not any(LN.writes(e.kind) for e in best.edges),
+               f'{sc.id}: claims to teach quiet, so the cheapest route must '
+               f'write nothing to the directory')
+            loud = [LN.cheapest_through(built, e) for e in built.edges
+                    if LN.writes(e.kind)]
+            loud = [r for r in loud if r.reachable]
+            ok(bool(loud) and min(r.cost for r in loud)
+               <= LN.budget_for(best.cost),
+               f'{sc.id}: and an affordable route that writes must also '
+               f'arrive, or there is no quieter choice to make')
+
+    # Seeds really do move the surface, or crux D10 is not being honoured.
+    sc = scenarios[0]
+    a, b = sc.body.build(0), sc.body.build(4242)
+    ok(a.domain != b.domain or [n.name for n in a.nodes] != [n.name for n in b.nodes],
+       'a different seed produces a different collection to read')
+
+
+def test_lineage_walk() -> None:
+    """Drive the real screen: the cheap route, the expensive one, and giving up."""
+    from crux.screens.lineage import MapScreen, WalkResultScreen, WalkScreen
+
+    caps = all_caps()[0]
+
+    def open_walk(scenario='lineage-reset'):
+        session = Session.open(clock=FakeClock(), read_only=True)
+        session.state = State()
+        return session, WalkScreen(session,
+                                   session.registry.by_id(scenario), seed=0)
+
+    # The cheapest route, taken deliberately.
+    session, walk = open_walk()
+    eq(walk.spent, 0, 'a walk starts having spent nothing')
+    ok(walk.budget >= walk.best.cost, 'and can afford the cheapest route')
+    shown = ''.join(r.plain() for r in walk.render(caps))
+    ok('Objective' in shown, 'the objective is named on screen')
+    ok('You hold' in shown, 'and so is what you already hold')
+    ok('m collection' in shown, 'the footer offers the collection')
+
+    result = None
+    for step in walk.best.priced:
+        moves = walk.moves()
+        idx = next(i for i, e in enumerate(moves) if e.id == step.id)
+        walk.cursor = idx
+        action = walk.activate(idx)
+        if action.kind == 'replace':
+            result = action.screen
+    ok(isinstance(result, WalkResultScreen), 'arriving ends the walk')
+    eq(result.score.total, 100.0, 'the cheapest route scores full marks')
+    ok(result.score.reached, 'and it arrived')
+    eq(len(session.state.attempts), 1, 'the attempt was recorded')
+    rec = session.state.attempts[0]
+    eq(rec.track, 'lineage', 'against the lineage track')
+    eq(len(rec.marked), len(walk.best.priced),
+       'and the route is stored as the evidence, like a sift marking is')
+    eq(rec.precision, 1.0, 'precision is the share of the spend that was needed')
+    # `content` rather than `render`: the debrief is longer than a terminal
+    # and the frame windows it, so asserting against the painted rows would
+    # be asserting about the scroll position rather than about the debrief.
+    text = ''.join(r.plain() for r in result.content(caps))
+    ok('The cheapest route' in text, 'the debrief shows the cheapest route')
+    ok('counts edges' in text,
+       'and, on a scenario that teaches it, what a hop-counting map would '
+       'have drawn instead')
+    ok(result.scrollable(caps),
+       'and the debrief is long enough that it has to be scrollable, which is '
+       'why the height backstop must never be the thing that trims it')
+
+    # The expensive route: it arrives, and it costs.
+    session, walk = open_walk()
+    reset = next(i for i, e in enumerate(walk.moves())
+                 if e.kind == 'ForceChangePassword'
+                 and walk.built.objective
+                 in LN.closure({e.dst}, walk.built.edges))
+    action = walk.activate(reset)
+    ok(action.kind == 'replace', 'the reset arrives in one move')
+    score = action.screen.score
+    ok(score.reached, 'so it did arrive')
+    ok(score.total < 100.0,
+       'and scored less, because arriving is not the only thing measured')
+    eq(score.spent, LN.cost_of('ForceChangePassword'), 'it cost the reset')
+
+    # Giving up.
+    session, walk = open_walk()
+    given = walk.handle(K.parse('g')).screen
+    eq(given.score.total, 0.0, 'giving up scores nothing')
+    ok('gave up' in ''.join(r.plain() for r in given.render(caps)),
+       'and the screen says so rather than implying a failure')
+
+    # Running the budget out.
+    session, walk = open_walk()
+    guard = 0
+    ended = None
+    while ended is None and guard < 40:
+        guard += 1
+        moves = walk.moves()
+        if not moves:
+            break
+        # Always the most expensive affordable move, which is how a budget
+        # gets burned without arriving.
+        idx = max(range(len(moves)),
+                  key=lambda i: (LN.cost_of(moves[i].kind)
+                                 if LN.cost_of(moves[i].kind) <= walk.left
+                                 else -1))
+        if LN.cost_of(moves[idx].kind) > walk.left:
+            break
+        action = walk.activate(idx)
+        if action.kind == 'replace':
+            ended = action.screen
+    ok(ended is not None, 'spending the budget ends the walk one way or another')
+    ok(walk.spent <= walk.budget, 'and a walk can never spend past its budget')
+
+    # The collection screen.
+    session, walk = open_walk()
+    mapped = walk.handle(K.parse('m')).screen
+    ok(isinstance(mapped, MapScreen), 'm opens the collection')
+    page = ''.join(r.plain() for r in mapped.content(caps))
+    for n in walk.built.nodes:
+        ok(n.name in page or len(walk.built.nodes) > 20,
+           'the collection shows the principals')
+        break
+    ok('the objective' in page, 'and marks which one is the objective')
+    ok(str(len(walk.built.edges)) in page, 'and counts the rights')
+
+
+def test_lineage_writes_and_waypoints() -> None:
+    """The write/read partition, and the through-a-node search behind it."""
+    from crux.targets._graph import Domain, Node, Right
+
+    ok(LN.writes('ForceChangePassword'), 'a password reset writes')
+    ok(LN.writes('AddMember'), 'adding a member writes')
+    ok(not LN.writes('ReadLAPSPassword'), 'reading a LAPS password does not')
+    ok(not LN.writes('HasSession'), 'stealing a session writes nothing to AD')
+    ok(not LN.writes('AdminTo'), 'nor does connecting to a host')
+    ok(all(k in LN.EDGE_COST for k in LN.WRITES),
+       'every writing kind is a priced kind')
+
+    # A diamond: one quiet arm and one loud arm reconverge on a shared tail.
+    # Deleting the quiet arm's edges would have taken the shared tail with it,
+    # which is the bug cheapest_through exists to avoid.
+    g = Domain(
+        nodes=(Node('you', 'user'), Node('quiet', 'computer'),
+               Node('loud', 'user'), Node('mid', 'user'),
+               Node('grp', 'group', name='G'), Node('goal', 'computer')),
+        edges=(Right('you', 'quiet', 'ReadLAPSPassword', why='q'),
+               Right('quiet', 'mid', 'HasSession', why='q'),
+               Right('you', 'loud', 'ForceChangePassword', why='l'),
+               Right('loud', 'mid', 'HasSession', why='l'),
+               Right('mid', 'grp', 'MemberOf'),
+               Right('grp', 'goal', 'AdminTo', why='shared tail')),
+        owned=('you',), objective='goal', filler=(0, 0)).build(0)
+
+    best = LN.cheapest(g)
+    ok(not any(LN.writes(e.kind) for e in best.edges),
+       'the cheapest route through the diamond is the quiet arm')
+
+    reset = next(e for e in g.edges if e.kind == 'ForceChangePassword')
+    loud = LN.cheapest_through(g, reset)
+    ok(loud.reachable, 'a route forced through the loud arm still arrives')
+    ok(any(e.kind == 'AdminTo' for e in loud.edges),
+       'and it keeps the shared tail the naive deletion would have removed')
+    ok(any(LN.writes(e.kind) for e in loud.edges),
+       'and it does write, so the quiet choice is a real one')
+
+    # A write edge whose source nothing reaches is not an arriving route,
+    # and the search says so rather than raising.
+    island = Domain(
+        nodes=(Node('you', 'user'), Node('goal', 'computer'),
+               Node('lonely', 'user'), Node('off', 'group', name='OFF')),
+        edges=(Right('you', 'goal', 'AdminTo', why='direct'),
+               Right('lonely', 'off', 'AddMember', why='unreachable')),
+        owned=('you',), objective='goal', filler=(0, 0)).build(0)
+    orphan = next(e for e in island.edges if e.kind == 'AddMember')
+    ok(not LN.cheapest_through(island, orphan).reachable,
+       'a write edge whose source you cannot reach is not an arriving route')
+
+
+def test_sitting_runs_a_lineage_leg() -> None:
+    """A sitting can schedule and score a lineage walk, not only the three
+    tracks it shipped with.
+
+    The regression this guards is narrow and real: proctor's score reader was
+    written `total if sift else total_score`, and a lineage `WalkScore` has
+    `total` but no `total_score`, so a lineage leg would have crashed the
+    sitting the first time one was drawn. The standard sitting now carries a
+    lineage slot, so this also proves that slot fills and plays end to end.
+    """
+    import crux.screens as SCR
+    from crux.screens.proctor import SittingIntroScreen
+
+    clock = FakeClock()
+    session = Session.open(clock=clock, read_only=True)
+    sc = session.registry.by_id('proctor-standard')
+    tracks = [sl.track for sl in sc.body.slots]
+    ok('lineage' in tracks, 'the standard sitting has a lineage leg')
+
+    leg = SittingIntroScreen(session, sc).handle(K.parse('RET')).screen
+    sitting = SCR.PACER
+    ok(sitting is not None, 'the clock is running')
+
+    # Walk each leg to a finish however its engine wants, so the lineage leg
+    # in the middle is exercised by the real controller rather than in
+    # isolation. Every engine ends a leg by returning a replace() action.
+    from crux.screens.lineage import WalkScreen
+    from crux.screens.mark import MarkScreen, ActScreen
+    from crux.screens.proctor import BetweenScreen, SittingResultScreen
+
+    seen_lineage = False
+    guard = 0
+    while guard < 20:
+        guard += 1
+        cur = sitting.current
+        clock.advance(30.0)
+        if isinstance(cur, WalkScreen):
+            seen_lineage = True
+            # Take the real cheapest route, so the leg scores rather than
+            # merely terminating.
+            action = None
+            for step in cur.best.priced:
+                mv = cur.moves()
+                idx = next((j for j, e in enumerate(mv) if e.id == step.id), None)
+                if idx is None:
+                    continue
+                action = cur.activate(idx)
+            nxt = action
+        elif isinstance(cur, MarkScreen):
+            # Abandon is always available and always ends the leg; the point
+            # here is the flow, not the sift score.
+            nxt = cur.handle(K.parse('X'))
+        else:
+            nxt = SCR.PACER.abandon()
+        scr = nxt.screen
+        if isinstance(scr, SittingResultScreen):
+            break
+        if isinstance(scr, BetweenScreen):
+            scr.handle(K.parse('RET'))
+        # ActScreen would appear only if a sift leg was played rather than
+        # abandoned; the abandon above avoids it.
+
+    ok(seen_lineage, 'the lineage leg was actually reached and played')
+    ok(SCR.PACER is None, 'and the sitting cleaned up its pacer')
+    lineage_rows = [a for a in session.state.attempts if a.track == 'lineage']
+    ok(bool(lineage_rows), 'the lineage leg was recorded as a lineage attempt')
+    ok(lineage_rows[0].sitting == sc.id,
+       'tagged with the sitting it was played inside')
+    ok(lineage_rows[0].total > 0,
+       'and the cheapest route scored, proving the score reader handles a '
+       'WalkScore')
+
+
+def test_chain_four_stage_engagement() -> None:
+    """Drive chain-aldwych end to end, through the lineage capstone.
+
+    This is the payoff of the chain contract widening: a four-stage engagement
+    that finishes on a graph walk rather than a pivot. It proves the lineage
+    stage is built by the same seam as the other three, scored by the
+    generalised readers, and recorded as one engagement.
+    """
+    from crux.screens.chain import (BridgeScreen, ChainIntroScreen,
+                                    ChainResultScreen)
+    from crux.screens.lineage import WalkScreen
+
+    session = Session.open(clock=FakeClock(), read_only=True)
+    sc = session.registry.by_id('chain-aldwych')
+    eq(tuple(st.track for st in sc.body.stages),
+       ('sift', 'salvage', 'conduit', 'lineage'),
+       'the engagement is the four-stage AD shape')
+    caps = all_caps()[0]
+
+    intro = ChainIntroScreen(session, sc)
+    shown = ''.join(r.plain() for r in intro.render(caps))
+    ok('take the domain' in shown or 'lineage' in shown,
+       'the intro lists the lineage stage')
+
+    # Stage 1: sift, played clean.
+    s1 = intro.handle(K.parse('RET')).screen
+    eq(type(s1).__name__, 'MarkScreen', 'begin opens the sift stage')
+    lead = next(i for i, l in enumerate(s1.lines) if l.kind == 'lead')
+    for _ in range(lead):
+        s1.handle(K.parse('Down'))
+    s1.handle(K.parse('SPC'))
+    act = s1.handle(K.parse('RET')).screen
+    correct = next(i for i, a in enumerate(act.body_data.actions) if a.correct)
+    for _ in range(correct):
+        act.handle(K.parse('Down'))
+    b1 = act.handle(K.parse('RET')).screen
+    ok(isinstance(b1, BridgeScreen) and b1.stage.track == 'salvage',
+       'the sift stage bridges to salvage')
+
+    # Stage 2: salvage, landed.
+    s2 = b1.handle(K.parse('RET')).screen
+    eq(type(s2).__name__, 'SalvageScreen', 'the bridge opens salvage')
+    ok(s2.error == '', 'the salvage target opened inside the chain')
+    s2.path.write_text(s2.body_data.render(s2.body_data.solution, s2.url, 0))
+    b2 = s2.handle(K.parse('r')).screen
+    ok(isinstance(b2, BridgeScreen) and b2.stage.track == 'conduit',
+       'landing the exploit bridges to conduit')
+
+    # Stage 3: conduit, or skipped where namespaces are unavailable.
+    s3 = b2.handle(K.parse('RET')).screen
+    eq(type(s3).__name__, 'ConduitScreen', 'the bridge opens conduit')
+    if s3.usable:
+        s3.path.write_text(s3.body_data.render(s3.body_data.solution,
+                                              str(s3.assets)))
+        b3 = s3.handle(K.parse('r')).screen
+    else:
+        b3 = s3.handle(K.parse('RET')).screen
+    ok(isinstance(b3, BridgeScreen) and b3.stage.track == 'lineage',
+       'the conduit stage bridges to the lineage capstone, whether it landed '
+       'or was skipped')
+    low = b3.stage.bridge.lower()
+    ok('costs least' in low or 'cheapest' in low or 'fewest edges' in low,
+       'and the bridge sets up the cost lesson')
+
+    # Stage 4: lineage, the cheapest route to Domain Admins.
+    s4 = b3.handle(K.parse('RET')).screen
+    ok(isinstance(s4, WalkScreen), 'the bridge opens the lineage walk')
+    eq(s4.scenario.tier, 'graded', 'a lineage stage is graded, like sift')
+    result = None
+    for step in s4.best.priced:
+        mv = s4.moves()
+        idx = next((j for j, e in enumerate(mv) if e.id == step.id), None)
+        if idx is None:
+            continue
+        action = s4.activate(idx)
+        if action.kind == 'replace':
+            result = action.screen
+    ok(isinstance(result, ChainResultScreen),
+       'taking the cheapest route ends the engagement')
+
+    text = ''.join(r.plain() for r in result.content(caps))
+    ok('lineage' in text, 'the engagement result lists the lineage stage')
+    ok(f'{len(sc.body.stages)}' in result.status
+       or 'rooted' in text or 'of 4' in text,
+       'and scores over four stages')
+
+    chain_rows = [a for a in session.state.attempts if a.track == 'chain']
+    eq(len(chain_rows), 1, 'one engagement attempt recorded')
+    eq(chain_rows[0].scenario, 'chain-aldwych', 'under the aldwych id')
+    if s3.usable:
+        eq(result.chain.passed, 4, 'a clean run passes all four stages')
+        eq(chain_rows[0].total, 100.0, 'and scores 100')
+    else:
+        ok(result.chain.passed >= 3,
+           'the sift, salvage and lineage stages pass even when conduit is '
+           'skipped for want of namespaces')
+
+
 def main() -> int:
     for fn in (test_keys, test_render_primitives, test_scoring, test_clock,
                test_state, test_model_guards, test_loader, test_fixtures,
@@ -1508,7 +2460,15 @@ def main() -> int:
                test_length_framing, test_hostile_capstone,
                test_result_screens_scroll, test_conduit_engine,
                test_conduit_end_to_end, test_all_conduit_solutions,
-               test_chain_flow, test_chain_partial, test_home_shows_chain,
+               test_chain_flow, test_chain_partial,
+               test_chain_four_stage_engagement,
+               test_home_shows_composites,
+               test_pacing_arithmetic, test_pacing_history, test_sitting_fill,
+               test_sitting_flow, test_pacer_release, test_pacing_screen,
+               test_lineage_arithmetic, test_lineage_scoring,
+               test_lineage_content, test_lineage_walk,
+               test_lineage_writes_and_waypoints,
+               test_sitting_runs_a_lineage_leg,
                test_list_windowing, test_progress_reset_and_work_files,
                test_result_explains_every_key_line,
                test_no_third_party_attribution,
