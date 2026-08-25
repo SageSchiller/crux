@@ -129,8 +129,34 @@ class WalkScreen(ListScreen):
             shown += 1
         rows.append(hold)
         rows.append(Text())
-        rows.append(line('  A right costs what using it costs you. m reads '
-                         'the collection.', p.muted))
+
+        # Hand-holding on first contact, and out of the way after. A priced
+        # graph is a genuinely new idea the first time you meet it (what is
+        # the number, why do I hold groups I did not pick, what does a move
+        # do), so the first time the player opens any lineage scenario they
+        # get the whole mechanic spelled out. Once they have finished one it
+        # collapses to a single reminder line, the same shape the sift screen
+        # uses. Gated on standalone lineage history, so a chain's lineage
+        # stage still explains itself to someone who has never played the
+        # track.
+        first_time = self.session.state.track_summary('lineage')[0] == 0
+        if first_time:
+            rows.append(line('  New here?', p.accent2, bold=True))
+            rows.extend(wrap_rich(
+                caps,
+                'Each row below is a **right** you can use now; the `[n]` is '
+                'what using it costs. **enter** takes it, and new rights open '
+                'up. Reach the **objective** above for the fewest total '
+                'points, which is rarely the fewest steps. You already hold '
+                'everything under "You hold", and its groups, for free. '
+                '**m** shows the whole map, **?** explains more.',
+                caps.cols - 6, '  ', p.muted, p.accent))
+        else:
+            rows.extend(wrap_rich(
+                caps,
+                'Each row is a right you can use; `[n]` is its cost. enter '
+                'takes one, m reads the whole collection.',
+                caps.cols - 6, '  ', p.muted, p.accent))
         rows.append(Text())
         return rows
 

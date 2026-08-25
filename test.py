@@ -1807,6 +1807,9 @@ def test_sitting_flow() -> None:
 
     header = ''.join(r.plain() for r in leg1.render(caps))
     ok('left' in header, 'the remaining budget is on screen while you play')
+    ok('leg 1/3' in header,
+       'and which leg of the sitting you are on, so a first-timer dropped '
+       'into an ordinary screen knows they are being timed')
     footer = header
     ok('abandon' in footer,
        'and the footer advertises the key that walks away (contract rule 4)')
@@ -2142,6 +2145,24 @@ def test_lineage_walk() -> None:
     ok('Objective' in shown, 'the objective is named on screen')
     ok('You hold' in shown, 'and so is what you already hold')
     ok('m collection' in shown, 'the footer offers the collection')
+    # First contact (empty history) gets the full mechanic spelled out; once
+    # a lineage scenario has been finished it collapses to a terse reminder.
+    # The collapse is checked on a throwaway session so it does not pollute
+    # the attempt history this test asserts on further down.
+    ok('New here?' in shown,
+       'a player who has never done lineage gets the full explainer')
+    seasoned_sess = Session.open(clock=FakeClock(), read_only=True)
+    seasoned_sess.state = State()
+    seasoned_sess.state.record(Attempt('lineage-reset', 'lineage', when=1.0,
+                                       elapsed=60.0, total=100.0, marks=100.0,
+                                       recall=1.0, precision=1.0,
+                                       tier='graded'))
+    seasoned = WalkScreen(seasoned_sess,
+                          seasoned_sess.registry.by_id('lineage-culdesac'),
+                          seed=0)
+    later = ''.join(r.plain() for r in seasoned.render(caps))
+    ok('New here?' not in later,
+       'and it is gone once the track has been played')
 
     result = None
     for step in walk.best.priced:

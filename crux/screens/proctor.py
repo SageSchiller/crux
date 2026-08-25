@@ -114,20 +114,27 @@ class Sitting:
         return screen is self.current
 
     def banner(self) -> str:
-        """The header clock, coarse on purpose.
+        """The header clock, and which leg you are on, coarse on purpose.
 
+        The leg position is the orientation a first-timer needs: dropped into
+        an ordinary sift or salvage screen with a clock ticking, `leg 2/5` is
+        what says you are inside a timed sitting rather than a single exercise.
         It shares the top border with the scenario title, and the border gives
-        the title away to make room for this (see `render.box_top`). Whole
-        minutes buy that room back: nobody paces to the second with twenty
-        minutes left, and under two minutes it goes back to seconds, because
-        at that point the seconds are the whole message.
+        the title away to make room (see `render.box_top`); the title is also
+        in the body, the fact that you are being timed is not, so the clock
+        wins the space. Whole minutes buy room back: nobody paces to the second
+        with twenty minutes left, and under two minutes it returns to seconds,
+        because then the seconds are the whole message.
         """
+        pos = f'leg {self.index + 1}/{len(self.picks)}'
         left = self.remaining
         if left <= 0:
-            return 'budget gone'
+            return f'{pos}  budget gone'
+        clock = f'{_short(left)} left'
         over = self.leg_overrun
-        base = f'{_short(left)} left'
-        return f'{base}  +{_short(over)}' if over > 0 else base
+        if over > 0:
+            clock += f'  +{_short(over)}'
+        return f'{pos}  {clock}'
 
     def abandon(self):
         """`X`: take the zero, keep the clock. The verb the track is about."""
