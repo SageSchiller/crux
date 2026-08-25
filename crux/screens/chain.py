@@ -152,7 +152,8 @@ class ChainIntroScreen(Screen):
         rows = wrap_rich(caps, self.body_data.brief, caps.cols - 6, '  ',
                          p.fg, p.accent)
         rows.append(Text())
-        rows.append(line('  Three stages, in order:', p.muted))
+        n = len(self.body_data.stages)
+        rows.append(line(f'  {n} stages, in order:', p.muted))
         names = {'sift': 'find the lead', 'salvage': 'land the exploit',
                  'conduit': 'reach the next host',
                  'lineage': 'take the domain'}

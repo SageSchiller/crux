@@ -260,6 +260,7 @@ _S4_GRAPH = Domain(
     ),
     owned=('you',),
     objective='da',
+    domain='aldwych.local', netbios='ALDWYCH',
 )
 
 _STAGE4 = LineageBody(

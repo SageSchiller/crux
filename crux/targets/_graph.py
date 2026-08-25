@@ -190,10 +190,22 @@ class Domain:
     owned: tuple[str, ...]
     objective: str
     filler: tuple[int, int] = (10, 16)
+    #: Pin the domain instead of drawing one per seed. A standalone collection
+    #: leaves this empty and the domain name varies with the seed like every
+    #: other surface detail (crux D10). A chain stage sets it, because the
+    #: engagement already named the domain in its earlier stages and a graph
+    #: that called the same box something different would read as a different
+    #: box. The account names, ordering and padding still vary; only the
+    #: domain the fiction fixed is fixed.
+    domain: str = ''
+    netbios: str = ''
 
     def build(self, seed: int) -> Built:
         r = _rng(seed)
-        domain, netbios = r.choice(_DOMAINS)
+        if self.domain and self.netbios:
+            domain, netbios = self.domain, self.netbios
+        else:
+            domain, netbios = r.choice(_DOMAINS)
 
         # Draw a name for every node that did not author one. Ordinary people
         # and ordinary workstations are drawn; anything whose name carries

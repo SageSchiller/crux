@@ -2377,6 +2377,9 @@ def test_chain_four_stage_engagement() -> None:
     shown = ''.join(r.plain() for r in intro.render(caps))
     ok('take the domain' in shown or 'lineage' in shown,
        'the intro lists the lineage stage')
+    ok('4 stages' in shown, 'and counts them correctly, not "Three stages"')
+    ok('Three stages' not in shown,
+       'the stage count is not hardcoded to three')
 
     # Stage 1: sift, played clean.
     s1 = intro.handle(K.parse('RET')).screen
@@ -2422,6 +2425,16 @@ def test_chain_four_stage_engagement() -> None:
     s4 = b3.handle(K.parse('RET')).screen
     ok(isinstance(s4, WalkScreen), 'the bridge opens the lineage walk')
     eq(s4.scenario.tier, 'graded', 'a lineage stage is graded, like sift')
+    # The engagement named the domain aldwych.local in its earlier stages, so
+    # the graph must not draw a different one per seed: a chain that called the
+    # same box two names would read as two boxes. Checked across seeds because
+    # the drawn-domain bug only showed at seeds other than the pinned display.
+    for probe in (0, 7, 991):
+        built = s4.body_data.build(probe)
+        eq(built.domain, 'aldwych.local',
+           f'the lineage stage domain stays aldwych.local at seed {probe}')
+        ok(built.label(built.objective),
+           'and the graph still builds at that seed')
     result = None
     for step in s4.best.priced:
         mv = s4.moves()
