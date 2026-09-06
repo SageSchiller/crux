@@ -1,6 +1,7 @@
 # crux
 
-Offline terminal drills for the judgement parts of an engagement.
+**Version 1.7.0.** Offline terminal drills for the judgement parts of an
+engagement.
 
 `waypoint` tells you what to do next given a known state. `hone` makes you
 fluent in the tool. **crux is the two things in between**: producing that state
@@ -18,16 +19,36 @@ Four skills, and two ways of composing them:
 | **chain** | A full engagement, end to end (up to all four skills) |
 | **proctor** | Spend a fixed clock across more work than it holds |
 
+## Getting it
+
+You need **Python 3.10 or newer** on Linux and a terminal at least 80 columns
+wide. Then either:
+
+- download `crux.pyz` from the
+  [latest release](https://github.com/SageSchiller/crux/releases/latest)
+  and run `python3 crux.pyz`, or
+- clone this repository and run `python3 -m crux` from inside it.
+
+Standard library only: no pip, no network, ever. `sift`, `salvage`,
+`lineage`, `chain` and `proctor` need nothing else; `salvage` runs its targets
+on your own loopback. `conduit` builds real networks out of unprivileged user
+namespaces and needs `ip`, `unshare`, `nsenter`, `socat`, `ssh`, `sshd`,
+`proxychains4` and `chisel` on the machine. `python3 -m crux --doctor` says
+which of those are missing, and where the kernel forbids the namespaces the
+track says so and scores nothing rather than pretending.
+
+Progress lives in `$XDG_DATA_HOME/crux` (usually `~/.local/share/crux`):
+`state.json` is your history, `work/` is the scripts you edited. Nothing is
+sent anywhere.
+
 ## Running it
 
 ```bash
-python3 -m crux            # from the source tree (opens on the CRUX scan-lock splash; --no-splash skips it)
-./build.sh && dist/crux.pyz   # a single file that needs nothing installed
-python3 -m crux --doctor   # what this terminal and machine support
-python3 -m crux --reset    # erase progress (history, work, or all); asks first
+python3 -m crux               # opens on the CRUX scan-lock splash; --no-splash skips it
+python3 crux.pyz              # the same, from the single file
+python3 -m crux --doctor      # what this terminal and machine support
+python3 -m crux --reset       # erase progress (history, work, or all); asks first
 ```
-
-Python 3, standard library only. No pip, no network, ever.
 
 ## Status
 
@@ -70,6 +91,24 @@ safe to hand to anyone.
 
 See `CRUX-PLAN.md`, which is the file to read first.
 
+## For testers
+
+Thank you. Three things are worth an evening each:
+
+1. **`sift`, cold.** Open it, take the first scenario, and mark what you
+   would act on. If at any point the marking is unclear, that is the bug;
+   note what was on the screen.
+2. **One `chain` engagement, end to end.** The single Linux host first. It
+   ends on "rooted" or it does not, and either is worth telling me.
+3. **A `proctor` sitting.** Read the post-mortem afterwards. The sunk number
+   is the one nobody is ever shown about themselves.
+
+A useful report is the output of `python3 -m crux --doctor`, the track and
+scenario, what you pressed, and what the screen said. Known edges: `conduit`
+needs the tools above and a kernel that allows unprivileged user namespaces;
+only Linux has been tried; the author runs Python 3.14, and 3.10 to 3.13 have
+not been tried by hand.
+
 ## After any change
 
 ```bash
@@ -92,3 +131,7 @@ crux never touches anything it did not create. Every target is a loopback
 socket or a network namespace this process owns on this machine, and no
 `salvage` scenario carries a working exploit for real software. See D2 and D7
 in the plan.
+
+## Licence
+
+MIT. See `LICENSE`.
